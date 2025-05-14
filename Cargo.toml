@@ -1,6 +1,6 @@
 [package]
 name = "bio_apis"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["David O'Connor <the_alchemist@fastmail.com>"]
 description = "DNA and RNA sequence types and functions"
@@ -17,9 +17,14 @@ exclude = [".gitignore"]
 
 [dependencies]
 ureq = "3.0.4"
+url = "2.5.4"
 webbrowser = "1.0.1"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
 rand = "0.9.1"
+
+
+# todo temp. Remo this once you sort out how to handle in PlasCAD
+bincode = "2.0.1"
 
 na_seq = "0.2.5"

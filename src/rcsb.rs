@@ -13,6 +13,7 @@ use rand::{self, Rng};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{self};
 use ureq;
+use bincode::{Encode, Decode};
 
 use crate::{ReqError, make_agent};
 
@@ -253,7 +254,7 @@ pub struct PdbMetaDataResults {
     rcsb_primary_citation: PrimaryCitation,
 }
 
-// /// This doesn't deserialize directly; it's the format we use internally.
+#[derive(Encode, Decode)] // todo temp
 pub struct PdbData {
     pub rcsb_id: String,
     pub title: String,
@@ -365,42 +366,34 @@ pub fn pdb_data_from_seq(aa_seq: &[AminoAcid]) -> Result<Vec<PdbData>, ReqError>
 }
 
 /// Open a PDB search for this protein's sequence, given a PDB ID, which we load from the API.
-pub fn open_overview(pdb_id: &str) {
-    if let Err(e) = webbrowser::open(&format!("{BASE_URL}/{pdb_id}")) {
+pub fn open_overview(ident: &str) {
+    if let Err(e) = webbrowser::open(&format!("{BASE_URL}/{ident}")) {
         eprintln!("Failed to open the web browser: {:?}", e);
     }
 }
 
 /// Open a PDB search for this protein's sequence, given a PDB ID, which we load from the API.
-pub fn open_3d_view(pdb_id: &str) {
-    if let Err(e) = webbrowser::open(&format!("{RCSB_3D_VIEW_URL}/{pdb_id}")) {
+pub fn open_3d_view(ident: &str) {
+    if let Err(e) = webbrowser::open(&format!("{RCSB_3D_VIEW_URL}/{ident}")) {
         eprintln!("Failed to open the web browser: {:?}", e);
     }
 }
 
 /// Load PDB structure data in the PDBx/mmCIF format. This is a modern, text-based format.
 /// It avoids the XML, and limitations of the other two available formats.
-/// todo: When to use wwpdb vs rscb?
-pub fn load_structure(pdb_id: &str) {
-    let pdb_id = pdb_id.to_owned().to_lowercase();
-
-    // todo: Use EGUI_file to save the file and reqwest to load it.
-
-    // let url_pdb_format = format!("https://files.wwpdb.org/pub/pdb/data/structures/divided/pdb/zg/pdb{pdb_id}.ent.gz");
-    // let url_pdbx_format = format!("https://files.wwpdb.org/pub/pdb/data/structures/divided/mmCIF/zg/{pdb_id}.cif.gz");
-
-    let url = format!("{STRUCTURE_FILE_URL}/{pdb_id}.cif");
+pub fn open_structure(ident: &str) {
+    let url = format!("{STRUCTURE_FILE_URL}/{ident}.cif");
 
     if let Err(e) = webbrowser::open(&url) {
         eprintln!("Failed to open the web browser: {:?}", e);
     }
 }
 
-pub fn load_metadata(pdb_id: &str) -> Result<PdbMetaData, ReqError> {
+pub fn load_metadata(ident: &str) -> Result<PdbMetaData, ReqError> {
     let agent = make_agent();
 
     let resp = agent
-        .get(&format!("{DATA_API_URL}/{}", pdb_id))
+        .get(&format!("{DATA_API_URL}/{}", ident))
         .call()?
         .body_mut()
         .read_to_string()?;
@@ -419,7 +412,7 @@ fn cif_url(ident: &str) -> String {
     )
 }
 
-/// Download a CIF file from the RSCB, returning an SDF string.
+/// Download a mmCIF file (protein atom coords and metadata) from the RSCB, returning an SDF string.
 pub fn load_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 

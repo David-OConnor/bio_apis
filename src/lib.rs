@@ -3,6 +3,7 @@ use std::{io, time::Duration};
 use ureq::Agent;
 
 pub mod drugbank;
+pub mod ncbi;
 pub mod pubchem;
 pub mod rcsb;
 
