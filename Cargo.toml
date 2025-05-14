@@ -1,0 +1,25 @@
+[package]
+name = "bio_apis"
+version = "0.1.0"
+edition = "2024"
+authors = ["David O'Connor <the_alchemist@fastmail.com>"]
+description = "DNA and RNA sequence types and functions"
+keywords = ["dna", "primer", "biology", "pcr"]
+categories = [
+    "science", "science::bioinformatics", "api-bindings"
+]
+repository = "https://github.com/David-OConnor/bio_apis"
+documentation = "https://docs.rs/bio_apis"
+readme = "README.md"
+license = "MIT"
+exclude = [".gitignore"]
+
+
+[dependencies]
+ureq = "3.0.4"
+webbrowser = "1.0.1"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+rand = "0.9.1"
+
+na_seq = "0.2.5"
