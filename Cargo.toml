@@ -16,15 +16,19 @@ exclude = [".gitignore"]
 
 
 [dependencies]
-ureq = "3.0.4"
+ureq = "3.0.11"
 url = "2.5.4"
 webbrowser = "1.0.1"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
 rand = "0.9.1"
+# We use this for decompressing downloaded CIF files.
+flate2 = "1.1.1"
 
 
-# todo temp. Remo this once you sort out how to handle in PlasCAD
-bincode = "2.0.1"
+bincode = { version = "2.0.1", optional = true }
 
 na_seq = "0.2.5"
+
+[features]
+encode = ["bincode"]

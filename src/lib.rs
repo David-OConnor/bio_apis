@@ -22,7 +22,7 @@ impl From<io::Error> for ReqError {
     }
 }
 
-const HTTP_TIMEOUT: u64 = 4; // In seconds
+const HTTP_TIMEOUT: u64 = 3; // In seconds
 
 fn make_agent() -> Agent {
     let config = Agent::config_builder()

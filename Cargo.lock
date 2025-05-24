@@ -39,6 +39,7 @@ name = "bio_apis"
 version = "0.1.1"
 dependencies = [
  "bincode",
+ "flate2",
  "na_seq",
  "rand",
  "serde",

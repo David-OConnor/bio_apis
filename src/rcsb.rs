@@ -1,19 +1,24 @@
-//! For loading data from the RSCB website's API.
+//! For loading data from the RCSB website's API.
 
 //! For opening the browser to NCBI BLAST, PDB etc.
 //!
 //! PDB Search API: https://search.rcsb.org/#search-api
 //! PDB Data API: https://data.rcsb.org/#data-api
 
-use std::io;
+use std::{io, io::Read};
 
+#[cfg(feature = "encode")]
+use bincode::{Decode, Encode};
+use flate2::read::GzDecoder;
 // todo: Determine if you want this.
 use na_seq::{AminoAcid, seq_aa_to_str};
 use rand::{self, Rng};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{self};
-use ureq;
-use bincode::{Encode, Decode};
+use ureq::{
+    self, Agent, Body,
+    http::{Response, StatusCode},
+};
 
 use crate::{ReqError, make_agent};
 
@@ -254,7 +259,7 @@ pub struct PdbMetaDataResults {
     rcsb_primary_citation: PrimaryCitation,
 }
 
-#[derive(Encode, Decode)] // todo temp
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct PdbData {
     pub rcsb_id: String,
     pub title: String,
@@ -412,13 +417,106 @@ fn cif_url(ident: &str) -> String {
     )
 }
 
-/// Download a mmCIF file (protein atom coords and metadata) from the RSCB, returning an SDF string.
+fn cif_gz_url(ident: &str) -> String {
+    cif_url(ident) + ".gz"
+}
+
+fn validation_cif_gz_url(ident: &str) -> io::Result<String> {
+    if ident.len() < 3 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "PDB ID must be >= 3 characters.",
+        ));
+    }
+
+    let ident_middle = &ident[1..3];
+
+    Ok(format!(
+        "https://files.rcsb.org/pub/pdb/validation_reports/{}/{ident}/{ident}_validation.cif.gz",
+        ident_middle
+    ))
+}
+
+fn structure_factors_cif_url(ident: &str) -> String {
+    format!(
+        "https://files.rcsb.org/download/{}-sf.cif",
+        ident.to_uppercase()
+    )
+}
+
+fn structure_factors_cif_gz_url(ident: &str) -> String {
+    structure_factors_cif_url(ident) + ".gz"
+}
+
+// todo: 2fo-fc: https://files.rcsb.org/pub/pdb/validation_reports/km/1kmk/1kmk_validation_2fo-fc_map_coef.cif.gz
+// todo: fo-fc: https://files.rcsb.org/pub/pdb/validation_reports/km/1kmk/1kmk_validation_fo-fc_map_coef.cif.gz
+
+fn decode_gz_resp(resp: Response<Body>) -> Result<String, ReqError> {
+    let body_reader = resp.into_body().into_reader();
+    let mut decoder = GzDecoder::new(body_reader);
+
+    let mut result = String::new();
+    decoder.read_to_string(&mut result)?;
+
+    Ok(result)
+}
+
+/// Download a (atomic coordinates) mmCIF file (protein atom coords and metadata) from the RCSB,
+/// returning an a CIF string. Downloads the compressed (.gz) version, then deocompresses, to save
+/// bandwidth.
 pub fn load_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
-    Ok(agent
-        .get(cif_url(ident))
-        .call()?
-        .body_mut()
-        .read_to_string()?)
+    let resp = agent.get(&cif_gz_url(ident)).call()?;
+    decode_gz_resp(resp)
+
+    // Ok(agent
+    //     .get(cif_url(ident))
+    //     .call()?
+    //     .body_mut()
+    //     .read_to_string()?)
+}
+
+/// Download a validation mmCIF file (Related to electron density??) from the RCSB, returning an CIF string.
+pub fn load_validation_cif(ident: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+
+    let resp = agent.get(&validation_cif_gz_url(ident).unwrap_or_default()).call()?;
+    decode_gz_resp(resp)
+}
+
+/// Download a structure factors (e.g. computed electron density over space) mmCIF file
+/// from the RCSB, returning an CIF string.
+pub fn load_structure_factors_cif(ident: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+
+    let resp = agent.get(&structure_factors_cif_gz_url(ident)).call()?;
+    decode_gz_resp(resp)
+
+    // Ok(agent
+    //     .get(structure_factors_cif_url(ident))
+    //     .call()?
+    //     .body_mut()
+    //     .read_to_string()?)
+}
+
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+#[derive(Clone, Debug)]
+pub struct DataAvailable {
+    pub validation: bool,
+    pub structure_factors: bool,
+}
+
+fn file_exists(url: &str, agent: &Agent) -> Result<bool, ReqError> {
+    Ok(agent.get(url).call()?.status() == StatusCode::OK)
+}
+
+/// Find out if additional data files are available, such as structure factors and validation data.
+pub fn get_data_avail(ident: &str) -> Result<DataAvailable, ReqError> {
+    let agent = make_agent();
+
+    Ok(DataAvailable {
+        validation: file_exists(&validation_cif_gz_url(ident).unwrap_or_default(), &agent)?,
+        structure_factors: file_exists(&structure_factors_cif_url(ident), &agent)?,
+    })
 }

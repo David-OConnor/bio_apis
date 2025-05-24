@@ -19,6 +19,7 @@ WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
 - [RCSB](https://data.rcsb.org/) (Protein data bank)
 - [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
 - [DrugBank](https://docs.drugbank.com/v1/)
+- [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
 
 
 See the [API docs](https://docs.rs/bio_apis) for functionality.
