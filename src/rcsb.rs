@@ -421,7 +421,9 @@ fn cif_gz_url(ident: &str) -> String {
     cif_url(ident) + ".gz"
 }
 
-fn validation_cif_gz_url(ident: &str) -> io::Result<String> {
+/// Do not use directly: Helper for the 3 validation types.
+/// This and the URL functions that call it are fallible due to needing part of the ident as part of the URL.
+fn validation_base_url(ident: &str) -> io::Result<String> {
     if ident.len() < 3 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -432,9 +434,21 @@ fn validation_cif_gz_url(ident: &str) -> io::Result<String> {
     let ident_middle = &ident[1..3];
 
     Ok(format!(
-        "https://files.rcsb.org/pub/pdb/validation_reports/{}/{ident}/{ident}_validation.cif.gz",
+        "https://files.rcsb.org/pub/pdb/validation_reports/{}/{ident}/{ident}_validation",
         ident_middle
     ))
+}
+
+fn validation_cif_gz_url(ident: &str) -> io::Result<String> {
+    Ok(validation_base_url(ident)? + ".cif.gz")
+}
+
+fn validation_2fo_fc_cif_gz_url(ident: &str) -> io::Result<String> {
+    Ok(validation_base_url(ident)? + "_2fo-fc_map_coef.cif.gz")
+}
+
+fn validation_fo_fc_cif_gz_url(ident: &str) -> io::Result<String> {
+    Ok(validation_base_url(ident)? + "_fo-fc_map_coef.cif.gz")
 }
 
 fn structure_factors_cif_url(ident: &str) -> String {
@@ -447,9 +461,6 @@ fn structure_factors_cif_url(ident: &str) -> String {
 fn structure_factors_cif_gz_url(ident: &str) -> String {
     structure_factors_cif_url(ident) + ".gz"
 }
-
-// todo: 2fo-fc: https://files.rcsb.org/pub/pdb/validation_reports/km/1kmk/1kmk_validation_2fo-fc_map_coef.cif.gz
-// todo: fo-fc: https://files.rcsb.org/pub/pdb/validation_reports/km/1kmk/1kmk_validation_fo-fc_map_coef.cif.gz
 
 fn decode_gz_resp(resp: Response<Body>) -> Result<String, ReqError> {
     let body_reader = resp.into_body().into_reader();
@@ -481,7 +492,29 @@ pub fn load_cif(ident: &str) -> Result<String, ReqError> {
 pub fn load_validation_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
-    let resp = agent.get(&validation_cif_gz_url(ident).unwrap_or_default()).call()?;
+    let resp = agent
+        .get(&validation_cif_gz_url(ident).unwrap_or_default())
+        .call()?;
+    decode_gz_resp(resp)
+}
+
+/// Download a validation 2fo_fc map mmCIF file (Related to reflections?) from the RCSB, returning an CIF string.
+pub fn load_validation_2fo_fc_cif(ident: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+
+    let resp = agent
+        .get(&validation_2fo_fc_cif_gz_url(ident).unwrap_or_default())
+        .call()?;
+    decode_gz_resp(resp)
+}
+
+/// Download a validation fo_fc map mmCIF file (related to reflections?) from the RCSB, returning an CIF string.
+pub fn load_validation_fo_fc_cif(ident: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+
+    let resp = agent
+        .get(&validation_fo_fc_cif_gz_url(ident).unwrap_or_default())
+        .call()?;
     decode_gz_resp(resp)
 }
 
@@ -504,19 +537,34 @@ pub fn load_structure_factors_cif(ident: &str) -> Result<String, ReqError> {
 #[derive(Clone, Debug)]
 pub struct DataAvailable {
     pub validation: bool,
+    pub validation_2fo_fc: bool,
+    pub validation_fo_fc: bool,
     pub structure_factors: bool,
 }
 
 fn file_exists(url: &str, agent: &Agent) -> Result<bool, ReqError> {
-    Ok(agent.get(url).call()?.status() == StatusCode::OK)
+    Ok(agent.head(url).call()?.status() == StatusCode::OK)
 }
 
 /// Find out if additional data files are available, such as structure factors and validation data.
 pub fn get_data_avail(ident: &str) -> Result<DataAvailable, ReqError> {
     let agent = make_agent();
 
+    // todo: This is too expensive; find a better way??
+
     Ok(DataAvailable {
         validation: file_exists(&validation_cif_gz_url(ident).unwrap_or_default(), &agent)?,
+        validation_2fo_fc: file_exists(
+            &validation_2fo_fc_cif_gz_url(ident).unwrap_or_default(),
+            &agent,
+        )?,
+        validation_fo_fc: file_exists(
+            &validation_fo_fc_cif_gz_url(ident).unwrap_or_default(),
+            &agent,
+        )?,
+        // validation: false,
+        // validation_2fo_fc: false,
+        // validation_fo_fc: false,
         structure_factors: file_exists(&structure_factors_cif_url(ident), &agent)?,
     })
 }

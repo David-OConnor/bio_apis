@@ -8,6 +8,7 @@ pub mod pubchem;
 pub mod rcsb;
 
 // Workraound for not being able to construct ureq's errors.
+#[derive(Debug, Clone)]
 pub struct ReqError {}
 
 impl From<ureq::Error> for ReqError {
