@@ -12,6 +12,14 @@ It uses rigid data structures for requests and responses, and enums where possib
   - Download molecule data in various formats (e.g. CIF, SDF)
   - Open your default web browser to a  molecule's overview page, 3D structure etc
   - Search APIs for molecule data, or filter and return a list of IDs.
+  - Load all information on a protein from the RCSB data API
+
+Example loading all information from the data API from RCSB:
+
+```rust
+let data = bio_apis::rcsb::get_all_data("1ba3")?;
+```
+
 
 WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
 

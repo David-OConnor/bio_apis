@@ -5,7 +5,10 @@
 //! PDB Search API: https://search.rcsb.org/#search-api
 //! PDB Data API: https://data.rcsb.org/#data-api
 
-use std::{io, io::Read};
+use std::{
+    io,
+    io::{ErrorKind, Read},
+};
 
 #[cfg(feature = "encode")]
 use bincode::{Decode, Encode};
@@ -35,7 +38,7 @@ const DATA_API_URL: &str = "https://data.rcsb.org/rest/v1/core/entry";
 const MAX_RESULTS: usize = 8;
 
 #[derive(Default, Serialize)]
-struct PdbSearchParams {
+pub struct PdbSearchParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     value: Option<String>,
     /// "protein". Not sure what other values are authorized.
@@ -183,17 +186,17 @@ impl Serialize for Service {
 pub struct PdbSearchQuery {
     /// "terminal", or "group"
     #[serde(rename = "type")]
-    type_: RcsbType,
-    service: Service,
-    parameters: PdbSearchParams,
+    pub type_: RcsbType,
+    pub service: Service,
+    pub parameters: PdbSearchParams,
 }
 
 #[derive(Default, Serialize)]
 pub struct Sort {
-    sort_by: String,
-    direction: String,
+    pub sort_by: String,
+    pub direction: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    random_seed: Option<u32>,
+    pub random_seed: Option<u32>,
 }
 
 #[derive(Default, Serialize)]
@@ -202,20 +205,20 @@ pub struct SearchRequestOptions {
     /// Only for sequences?
     // todo: Enum
     #[serde(skip_serializing_if = "Option::is_none")]
-    scoring_strategy: Option<String>,
+    pub scoring_strategy: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sort: Option<Vec<Sort>>,
+    pub sort: Option<Vec<Sort>>,
     // todo: Paginate
 }
 
 #[derive(Default, Serialize)]
 pub struct PdbPayloadSearch {
-    return_type: ReturnType,
-    query: PdbSearchQuery,
+    pub return_type: ReturnType,
+    pub query: PdbSearchQuery,
     #[serde(skip_serializing_if = "Option::is_none")]
-    request_options: Option<SearchRequestOptions>,
+    pub request_options: Option<SearchRequestOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    request_info: Option<String>,
+    pub request_info: Option<String>,
 }
 
 #[derive(Default, Debug, Deserialize)]
@@ -232,31 +235,134 @@ pub struct PdbMetaData {
 
 #[derive(Default, Debug, Deserialize)]
 pub struct PdbSearchResults {
-    query_id: String,
-    result_type: String,
-    total_count: u32,
-    result_set: Vec<PdbSearchResult>,
+    pub query_id: String,
+    pub result_type: String,
+    pub total_count: u32,
+    pub result_set: Vec<PdbSearchResult>,
 }
 
-#[derive(Default, Debug, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct PdbStruct {
-    title: String,
+    pub title: String,
 }
 
-#[derive(Default, Debug, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+pub struct Database2 {
+    pub database_code: String,
+    pub database_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+pub struct Cell {
+    pub angle_alpha: f32,
+    pub angle_beta: f32,
+    pub angle_gamma: f32,
+    pub length_a: f32,
+    pub length_b: f32,
+    pub length_c: f32,
+    pub zpdb: u8,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+pub struct Citation {
+    pub country: Option<String>,
+    pub id: String,
+    pub journal_abbrev: String,
+    pub journal_id_astm: Option<String>,
+    pub journal_id_csd: String,
+    pub journal_id_issn: Option<String>,
+    pub journal_volume: Option<u16>,
+    pub page_first: Option<u32>,
+    pub page_last: Option<u32>,
+    pub pdbx_database_id_pub_med: Option<u32>,
+    pub rcsb_authors: Vec<String>,
+    pub rcsb_is_primary: String,
+    pub rcsb_journal_abbrev: String,
+    pub title: Option<String>,
+    pub year: Option<u16>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+pub struct PdbxDatabaseStatus {
+    pub deposit_site: Option<String>,
+    pub pdb_format_compatible: String,
+    pub process_site: String,
+    pub recvd_initial_deposition_date: String, // todo: Chrono time
+    pub status_code: String,
+    pub status_code_sf: Option<String>,
+    pub sgentry: Option<String>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+pub struct RcsbEntryInfo {
+    pub assembly_count: u32,
+    pub branched_entity_count: u32,
+    pub cis_peptide_count: u32,
+    pub deposited_atom_count: u32,
+    pub deposited_deuterated_water_count: u32,
+    pub deposited_hydrogen_atom_count: u32,
+    pub deposited_model_count: u32,
+    pub deposited_modeled_polymer_monomer_count: u32,
+    pub deposited_nonpolymer_entity_instance_count: u32,
+    pub deposited_polymer_entity_instance_count: u32,
+    pub deposited_polymer_monomer_count: u32,
+    pub deposited_solvent_atom_count: u32,
+    pub deposited_unmodeled_polymer_monomer_count: u32,
+    pub diffrn_radiation_wavelength_maximum: Option<f32>,
+    pub diffrn_radiation_wavelength_minimum: Option<f32>,
+    pub disulfide_bond_count: u32,
+    pub entity_count: u32,
+    pub experimental_method: String,
+    pub experimental_method_count: u32,
+    pub inter_mol_covalent_bond_count: u32,
+    pub inter_mol_metalic_bond_count: u32,
+    pub molecular_weight: f32,
+    pub na_polymer_entity_types: String,
+    pub nonpolymer_entity_count: u32,
+    pub nonpolymer_molecular_weight_maximum: Option<f32>,
+    pub nonpolymer_molecular_weight_minimum: Option<f32>,
+    pub polymer_composition: String,
+    pub polymer_entity_count: u32,
+    pub polymer_entity_count_dna: u32,
+    pub polymer_entity_count_rna: u32,
+    pub polymer_entity_count_nucleic_acid: u32,
+    pub polymer_entity_count_nucleic_acid_hybrid: u32,
+    pub polymer_entity_count_protein: u32,
+    pub polymer_entity_taxonomy_count: u32,
+    pub polymer_molecular_weight_maximum: f32,
+    pub polymer_molecular_weight_minimum: f32,
+    pub polymer_monomer_count_maximum: u32,
+    pub polymer_monomer_count_minimum: u32,
+}
+
+/// Top-level struct for results from the RCSB data API.
+/// todo: Fill out fields A/R.
+#[derive(Clone, Default, Debug, Deserialize)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct PdbDataResults {
     #[serde(rename = "struct")]
-    struct_: PdbStruct,
+    pub struct_: PdbStruct,
+    pub database2: Vec<Database2>,
+    pub cell: Option<Cell>,
+    pub citation: Vec<Citation>,
+    pub pdbx_database_status: PdbxDatabaseStatus,
+    pub rcsb_entry_info: RcsbEntryInfo,
 }
 
 #[derive(Default, Debug, Deserialize)]
 pub struct PrimaryCitation {
-    title: String,
+    pub title: String,
 }
 
 #[derive(Default, Debug, Deserialize)]
 pub struct PdbMetaDataResults {
-    rcsb_primary_citation: PrimaryCitation,
+    pub rcsb_primary_citation: PrimaryCitation,
 }
 
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
@@ -294,10 +400,10 @@ pub fn get_newly_released() -> Result<String, ReqError> {
         .body_mut()
         .read_to_string()?;
 
-    let search_data: PdbSearchResults = serde_json::from_str(&resp).map_err(|_| ReqError {})?;
+    let search_data: PdbSearchResults = serde_json::from_str(&resp)?;
 
     if search_data.result_set.is_empty() {
-        Err(ReqError {})
+        Err(ReqError::Http)
     } else {
         let mut rng = rand::rng();
         let i = rng.random_range(0..search_data.result_set.len());
@@ -342,7 +448,7 @@ pub fn pdb_data_from_seq(aa_seq: &[AminoAcid]) -> Result<Vec<PdbData>, ReqError>
         .body_mut()
         .read_to_string()?;
 
-    let search_data: PdbSearchResults = serde_json::from_str(&resp).map_err(|_| ReqError {})?;
+    let search_data: PdbSearchResults = serde_json::from_str(&resp)?;
 
     let mut result_search = Vec::new();
     for (i, r) in search_data.result_set.into_iter().enumerate() {
@@ -359,7 +465,7 @@ pub fn pdb_data_from_seq(aa_seq: &[AminoAcid]) -> Result<Vec<PdbData>, ReqError>
             .body_mut()
             .read_to_string()?;
 
-        let data: PdbDataResults = serde_json::from_str(&resp).map_err(|_| ReqError {})?;
+        let data: PdbDataResults = serde_json::from_str(&resp)?;
 
         result.push(PdbData {
             rcsb_id: r.identifier,
@@ -403,7 +509,7 @@ pub fn load_metadata(ident: &str) -> Result<PdbMetaData, ReqError> {
         .body_mut()
         .read_to_string()?;
 
-    let data: PdbMetaDataResults = serde_json::from_str(&resp).map_err(|_| ReqError {})?;
+    let data: PdbMetaDataResults = serde_json::from_str(&resp)?;
 
     Ok(PdbMetaData {
         prim_cit_title: data.rcsb_primary_citation.title,
@@ -426,7 +532,7 @@ fn cif_gz_url(ident: &str) -> String {
 fn validation_base_url(ident: &str) -> io::Result<String> {
     if ident.len() < 3 {
         return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
+            ErrorKind::InvalidInput,
             "PDB ID must be >= 3 characters.",
         ));
     }
@@ -449,6 +555,51 @@ fn validation_2fo_fc_cif_gz_url(ident: &str) -> io::Result<String> {
 
 fn validation_fo_fc_cif_gz_url(ident: &str) -> io::Result<String> {
     Ok(validation_base_url(ident)? + "_fo-fc_map_coef.cif.gz")
+}
+
+/// Load all data for a given RCSB PDB identifier.
+/// todo: Missing most fields currently.
+pub fn get_all_data(ident: &str) -> Result<PdbDataResults, ReqError> {
+    let agent = make_agent();
+
+    let resp = agent
+        .get(&format!("{DATA_API_URL}/{}", ident))
+        .call()?
+        .body_mut()
+        .read_to_string()?;
+
+    Ok(serde_json::from_str(&resp)?)
+}
+
+pub fn map_gz_url(ident: &str) -> Result<String, ReqError> {
+    // todo: Cut down on the required fields for this, to save data(?)
+    let agent = make_agent();
+
+    let resp = agent
+        .get(&format!("{DATA_API_URL}/{}", ident))
+        .call()?
+        .body_mut()
+        .read_to_string()?;
+
+    // note: This DB ident is available under pdbx_database_related, rcsb_entry_container_identifiers, and rcsb_external_references
+
+    let data: PdbDataResults = serde_json::from_str(&resp)?;
+
+    for db in &data.database2 {
+        if &db.database_id == "EMDB" {
+            let ident_emdb = &db.database_code;
+            let ident_emdb_2 = db.database_code.replace("-", "_").to_lowercase();
+
+            return Ok(format!(
+                // todo: We may need to use the data API for this. Example URL:
+                // https://files.rcsb.org/pub/emdb/structures/EMD-39757/map/emd_39757.map.gz
+                // todo: Can use the Data API to find this.
+                "https://files.rcsb.org/pub/emdb/structures/{ident_emdb}/map/{ident_emdb_2}.map.gz",
+            ));
+        }
+    }
+
+    Err(ReqError::Http)
 }
 
 fn structure_factors_cif_url(ident: &str) -> String {
@@ -525,46 +676,47 @@ pub fn load_structure_factors_cif(ident: &str) -> Result<String, ReqError> {
 
     let resp = agent.get(&structure_factors_cif_gz_url(ident)).call()?;
     decode_gz_resp(resp)
+}
 
-    // Ok(agent
-    //     .get(structure_factors_cif_url(ident))
-    //     .call()?
-    //     .body_mut()
-    //     .read_to_string()?)
+/// Download a map file (electron density, with DFT already applied), if available. (Usually not).
+pub fn load_map(ident: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+
+    let resp = agent.get(&map_gz_url(ident)?).call()?;
+    decode_gz_resp(resp)
 }
 
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 #[derive(Clone, Debug)]
-pub struct DataAvailable {
+pub struct FilesAvailable {
     pub validation: bool,
     pub validation_2fo_fc: bool,
     pub validation_fo_fc: bool,
     pub structure_factors: bool,
+    pub map: bool,
 }
 
 fn file_exists(url: &str, agent: &Agent) -> Result<bool, ReqError> {
-    Ok(agent.head(url).call()?.status() == StatusCode::OK)
+    Ok(agent.head(url).call().unwrap().status() == StatusCode::OK)
 }
 
 /// Find out if additional data files are available, such as structure factors and validation data.
-pub fn get_data_avail(ident: &str) -> Result<DataAvailable, ReqError> {
+pub fn get_files_avail(ident: &str) -> Result<FilesAvailable, ReqError> {
     let agent = make_agent();
 
-    // todo: This is too expensive; find a better way??
+    // With this check here, the validation URL checks will pass, so we can unwrap them.
+    if ident.len() < 3 {
+        return Err(ReqError::Io(io::Error::new(
+            ErrorKind::InvalidData,
+            "RCSB Ident too short",
+        )));
+    }
 
-    Ok(DataAvailable {
-        validation: file_exists(&validation_cif_gz_url(ident).unwrap_or_default(), &agent)?,
-        validation_2fo_fc: file_exists(
-            &validation_2fo_fc_cif_gz_url(ident).unwrap_or_default(),
-            &agent,
-        )?,
-        validation_fo_fc: file_exists(
-            &validation_fo_fc_cif_gz_url(ident).unwrap_or_default(),
-            &agent,
-        )?,
-        // validation: false,
-        // validation_2fo_fc: false,
-        // validation_fo_fc: false,
+    Ok(FilesAvailable {
+        validation: file_exists(&validation_cif_gz_url(ident).unwrap(), &agent)?,
+        validation_2fo_fc: file_exists(&validation_2fo_fc_cif_gz_url(ident).unwrap(), &agent)?,
+        validation_fo_fc: file_exists(&validation_fo_fc_cif_gz_url(ident).unwrap(), &agent)?,
         structure_factors: file_exists(&structure_factors_cif_url(ident), &agent)?,
+        map: file_exists(&map_gz_url(ident)?, &agent)?,
     })
 }
