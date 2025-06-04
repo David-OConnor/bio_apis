@@ -17,6 +17,7 @@ use flate2::read::GzDecoder;
 use na_seq::{AminoAcid, seq_aa_to_str};
 use rand::{self, Rng};
 use serde::{Deserialize, Serialize, Serializer};
+use serde_aux::prelude::*;
 use serde_json::{self};
 use ureq::{
     self, Agent, Body,
@@ -273,13 +274,18 @@ pub struct Citation {
     pub id: String,
     pub journal_abbrev: String,
     pub journal_id_astm: Option<String>,
-    pub journal_id_csd: String,
+    pub journal_id_csd: Option<String>,
     pub journal_id_issn: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_option_number_from_string")]
     pub journal_volume: Option<u16>,
-    pub page_first: Option<u32>,
-    pub page_last: Option<u32>,
+    // #[serde(default, deserialize_with = "deserialize_option_number_from_string")]
+    // pub page_first: Option<u32>,
+    pub page_first: Option<String>, // todo: Sometimes int, sometimes string of int, sometimes non-int string.
+    // #[serde(default, deserialize_with = "deserialize_option_number_from_string")]
+    // pub page_last: Option<u32>,
+    pub page_last: Option<String>,
     pub pdbx_database_id_pub_med: Option<u32>,
-    pub rcsb_authors: Vec<String>,
+    pub rcsb_authors: Option<Vec<String>>,
     pub rcsb_is_primary: String,
     pub rcsb_journal_abbrev: String,
     pub title: Option<String>,
@@ -697,7 +703,7 @@ pub struct FilesAvailable {
 }
 
 fn file_exists(url: &str, agent: &Agent) -> Result<bool, ReqError> {
-    Ok(agent.head(url).call().unwrap().status() == StatusCode::OK)
+    Ok(agent.head(url).call()?.status() == StatusCode::OK)
 }
 
 /// Find out if additional data files are available, such as structure factors and validation data.
@@ -717,6 +723,7 @@ pub fn get_files_avail(ident: &str) -> Result<FilesAvailable, ReqError> {
         validation_2fo_fc: file_exists(&validation_2fo_fc_cif_gz_url(ident).unwrap(), &agent)?,
         validation_fo_fc: file_exists(&validation_fo_fc_cif_gz_url(ident).unwrap(), &agent)?,
         structure_factors: file_exists(&structure_factors_cif_url(ident), &agent)?,
-        map: file_exists(&map_gz_url(ident)?, &agent)?,
+        // map: file_exists(&map_gz_url(ident).unwrap_or_default(), &agent)?,
+        map: false, // todo: Experiencing problems.
     })
 }
