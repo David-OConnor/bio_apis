@@ -619,7 +619,7 @@ fn structure_factors_cif_gz_url(ident: &str) -> String {
     structure_factors_cif_url(ident) + ".gz"
 }
 
-fn decode_gz_resp(resp: Response<Body>) -> Result<String, ReqError> {
+fn decode_gz_str_resp(resp: Response<Body>) -> Result<String, ReqError> {
     let body_reader = resp.into_body().into_reader();
     let mut decoder = GzDecoder::new(body_reader);
 
@@ -636,7 +636,7 @@ pub fn load_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
     let resp = agent.get(&cif_gz_url(ident)).call()?;
-    decode_gz_resp(resp)
+    decode_gz_str_resp(resp)
 
     // Ok(agent
     //     .get(cif_url(ident))
@@ -652,7 +652,7 @@ pub fn load_validation_cif(ident: &str) -> Result<String, ReqError> {
     let resp = agent
         .get(&validation_cif_gz_url(ident).unwrap_or_default())
         .call()?;
-    decode_gz_resp(resp)
+    decode_gz_str_resp(resp)
 }
 
 /// Download a validation 2fo_fc map mmCIF file (Related to reflections?) from the RCSB, returning an CIF string.
@@ -662,7 +662,7 @@ pub fn load_validation_2fo_fc_cif(ident: &str) -> Result<String, ReqError> {
     let resp = agent
         .get(&validation_2fo_fc_cif_gz_url(ident).unwrap_or_default())
         .call()?;
-    decode_gz_resp(resp)
+    decode_gz_str_resp(resp)
 }
 
 /// Download a validation fo_fc map mmCIF file (related to reflections?) from the RCSB, returning an CIF string.
@@ -672,7 +672,7 @@ pub fn load_validation_fo_fc_cif(ident: &str) -> Result<String, ReqError> {
     let resp = agent
         .get(&validation_fo_fc_cif_gz_url(ident).unwrap_or_default())
         .call()?;
-    decode_gz_resp(resp)
+    decode_gz_str_resp(resp)
 }
 
 /// Download a structure factors (e.g. computed electron density over space) mmCIF file
@@ -681,15 +681,22 @@ pub fn load_structure_factors_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
     let resp = agent.get(&structure_factors_cif_gz_url(ident)).call()?;
-    decode_gz_resp(resp)
+    decode_gz_str_resp(resp)
 }
 
 /// Download a map file (electron density, with DFT already applied), if available. (Usually not).
-pub fn load_map(ident: &str) -> Result<String, ReqError> {
+pub fn load_map(ident: &str) -> Result<Vec<u8>, ReqError> {
     let agent = make_agent();
 
     let resp = agent.get(&map_gz_url(ident)?).call()?;
-    decode_gz_resp(resp)
+
+    let body_reader = resp.into_body().into_reader();
+    let mut decoder = GzDecoder::new(body_reader);
+
+    let mut result = Vec::new();
+    decoder.read_to_end(result.as_mut())?;
+
+    Ok(result)
 }
 
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
@@ -718,12 +725,16 @@ pub fn get_files_avail(ident: &str) -> Result<FilesAvailable, ReqError> {
         )));
     }
 
+    let map = match &map_gz_url(ident) {
+        Ok(url) => file_exists(url, &agent)?,
+        Err(_) => false,
+    };
+
     Ok(FilesAvailable {
         validation: file_exists(&validation_cif_gz_url(ident).unwrap(), &agent)?,
         validation_2fo_fc: file_exists(&validation_2fo_fc_cif_gz_url(ident).unwrap(), &agent)?,
         validation_fo_fc: file_exists(&validation_fo_fc_cif_gz_url(ident).unwrap(), &agent)?,
         structure_factors: file_exists(&structure_factors_cif_url(ident), &agent)?,
-        // map: file_exists(&map_gz_url(ident).unwrap_or_default(), &agent)?,
-        map: false, // todo: Experiencing problems.
+        map,
     })
 }
