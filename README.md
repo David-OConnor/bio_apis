@@ -28,6 +28,6 @@ WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
 - [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
 - [DrugBank](https://docs.drugbank.com/v1/)
 - [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
-
+- Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules
 
 See the [API docs](https://docs.rs/bio_apis) for functionality.

@@ -2,6 +2,7 @@ use std::{io, time::Duration};
 
 use ureq::Agent;
 
+pub mod amber_geostd;
 pub mod drugbank;
 pub mod ncbi;
 pub mod pubchem;
