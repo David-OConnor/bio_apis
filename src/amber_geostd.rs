@@ -12,7 +12,7 @@ const BASE_URL: &str = "https://www.athanorlab.com";
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct GeostdItem {
-    pub mol2: String,
+    pub ident: String,
     pub frcmod_avail: bool,
     pub lib_avail: bool,
 }
@@ -25,18 +25,24 @@ pub struct GeostdData {
     pub lib: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct GeostdItemResponse {
+    pub result: Vec<GeostdItem>,
+}
+
 /// Get a list of all molecules available from Amber Geostd, and if they include FRCMOD and lib data.
-pub fn get_all_mols() -> Result<Vec<GeostdData>, ReqError> {
+pub fn get_all_mols() -> Result<Vec<GeostdItem>, ReqError> {
     let agent = make_agent();
 
     let url = format!("{BASE_URL}/get-all-mols");
     let resp = agent.get(url).call()?.body_mut().read_to_string()?;
 
-    Ok(serde_json::from_str(&resp)?)
+    let parsed: GeostdItemResponse = serde_json::from_str(&resp)?;
+    Ok(parsed.result)
 }
 
 /// Search for molecules by keyword, and find if they include FRCMOD and lib data.
-pub fn find_mols(search_text: &str) -> Result<Vec<GeostdData>, ReqError> {
+pub fn find_mols(search_text: &str) -> Result<Vec<GeostdItem>, ReqError> {
     let agent = make_agent();
 
     let mut params = HashMap::new();
@@ -52,7 +58,8 @@ pub fn find_mols(search_text: &str) -> Result<Vec<GeostdData>, ReqError> {
         .body_mut()
         .read_to_string()?;
 
-    Ok(serde_json::from_str(&resp)?)
+    let parsed: GeostdItemResponse = serde_json::from_str(&resp)?;
+    Ok(parsed.result)
 }
 
 /// Download a Mol2 file's text, and if available, FRCMOD and Lib.
