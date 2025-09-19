@@ -483,6 +483,7 @@ pub fn pdb_data_from_seq(aa_seq: &[AminoAcid]) -> Result<Vec<PdbData>, ReqError>
 }
 
 /// Open a PDB search for this protein's sequence, given a PDB ID, which we load from the API.
+/// This works with 4-letter (legacy), and 12-letter IDs.
 pub fn open_overview(ident: &str) {
     if let Err(e) = webbrowser::open(&format!("{BASE_URL}/{ident}")) {
         eprintln!("Failed to open the web browser: {:?}", e);
@@ -490,6 +491,7 @@ pub fn open_overview(ident: &str) {
 }
 
 /// Open a PDB search for this protein's sequence, given a PDB ID, which we load from the API.
+/// This works with 4-letter (legacy), and 12-letter IDs.
 pub fn open_3d_view(ident: &str) {
     if let Err(e) = webbrowser::open(&format!("{RCSB_3D_VIEW_URL}/{ident}")) {
         eprintln!("Failed to open the web browser: {:?}", e);
@@ -498,6 +500,7 @@ pub fn open_3d_view(ident: &str) {
 
 /// Load PDB structure data in the PDBx/mmCIF format. This is a modern, text-based format.
 /// It avoids the XML, and limitations of the other two available formats.
+/// /// This works with 4-letter (legacy), and 12-letter IDs.
 pub fn open_structure(ident: &str) {
     let url = format!("{STRUCTURE_FILE_URL}/{ident}.cif");
 
@@ -533,6 +536,7 @@ fn cif_gz_url(ident: &str) -> String {
     cif_url(ident) + ".gz"
 }
 
+// todo: THis validation is likely incompatible with 12-letter new identifiers.
 /// Do not use directly: Helper for the 3 validation types.
 /// This and the URL functions that call it are fallible due to needing part of the ident as part of the URL.
 fn validation_base_url(ident: &str) -> io::Result<String> {
@@ -646,6 +650,7 @@ pub fn load_cif(ident: &str) -> Result<String, ReqError> {
 }
 
 /// Download a validation mmCIF file (Related to electron density??) from the RCSB, returning an CIF string.
+///
 pub fn load_validation_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 

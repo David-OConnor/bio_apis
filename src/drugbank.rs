@@ -1,3 +1,4 @@
+//! [Home page](https://go.drugbank.com/)
 //! [API docs](https://docs.drugbank.com/v1/)
 
 use crate::{ReqError, make_agent};

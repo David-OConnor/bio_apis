@@ -26,6 +26,7 @@ WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
 ## API support
 - [RCSB](https://data.rcsb.org/) (Protein data bank)
 - [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
+- [PDBe](https://www.ebi.ac.uk/pdbe/)
 - [DrugBank](https://docs.drugbank.com/v1/)
 - [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
 - Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules

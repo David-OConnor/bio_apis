@@ -1,3 +1,4 @@
+//! [Home page](https://pubchem.ncbi.nlm.nih.gov/)
 //! [API docs](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
 
 use serde::Deserialize;
@@ -63,15 +64,14 @@ pub fn load_associated_structures(ident_pubchem: u32) -> Result<Vec<ProteinStruc
 }
 
 fn sdf_url(ident: &str) -> String {
-    // todo: LIkely wrong.
+    let ident_ = ident.to_uppercase();
     format!(
-        "https://pubchem.ncbi.nlm.nih.gov/rest/pug/conformers/0000FE0400000001/SDF?response_type=\
-        save&response_basename=Conformer3D_COMPOUND_CID_{}",
-        ident.to_uppercase()
+        "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/CID/{ident_}/record/SDF?record_type=\
+        3d&response_type=save&response_basename=Conformer3D_COMPOUND_CID_{ident_}",
     )
 }
 
-/// Download an SDF file from DrugBank, returning an SDF string.
+/// Download an SDF file from PubChem, returning an SDF string.
 pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
