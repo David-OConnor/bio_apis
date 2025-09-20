@@ -1,6 +1,8 @@
 //! Load amber Mol2, lib, and FRCMOD data for a given small organic molecule.
 //! These are from the AMBER_GEOSTD collection, CAO Amber 2025, and hosted
 //! on our own system.
+//!
+//! Note: Identifiers in this module can be Amber GeoStd/PDBe (Should be same), or PubChem.
 
 use std::collections::HashMap;
 

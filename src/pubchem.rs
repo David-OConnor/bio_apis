@@ -65,10 +65,7 @@ pub fn load_associated_structures(ident_pubchem: u32) -> Result<Vec<ProteinStruc
 
 fn sdf_url(ident: &str) -> String {
     let ident_ = ident.to_uppercase();
-    format!(
-        "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/CID/{ident_}/record/SDF?record_type=\
-        3d&response_type=save&response_basename=Conformer3D_COMPOUND_CID_{ident_}",
-    )
+    format!("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{ident_}/SDF?record_type=3d",)
 }
 
 /// Download an SDF file from PubChem, returning an SDF string.
