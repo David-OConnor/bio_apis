@@ -14,10 +14,19 @@ It uses rigid data structures for requests and responses, and enums where possib
   - Search APIs for molecule data, or filter and return a list of IDs.
   - Load all information on a protein from the RCSB data API
 
-Example loading all information from the data API from RCSB:
+Example of various API functionality:
 
 ```rust
 let data = bio_apis::rcsb::get_all_data("1ba3")?;
+
+let data = amber_geostd::find_mols(&lig.common.ident).unwrap();
+
+let cif_text = rcsb::load_cif(ident).unwrap();
+
+let sdf_data = drugbank::load_sdf(ident).unwrap();
+let sdf_data = pubchem::load_sdf(ident).unwrap();
+
+pubchem::open_overview(ident);
 ```
 
 
@@ -29,6 +38,7 @@ WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
 - [PDBe](https://www.ebi.ac.uk/pdbe/)
 - [DrugBank](https://docs.drugbank.com/v1/)
 - [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
+- [LMSD](https://www.lipidmaps.org)
 - Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules
 
 See the [API docs](https://docs.rs/bio_apis) for functionality.

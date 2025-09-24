@@ -4,6 +4,7 @@ use ureq::Agent;
 
 pub mod amber_geostd;
 pub mod drugbank;
+mod lmsd;
 pub mod ncbi;
 pub mod pdbe;
 pub mod pubchem;
