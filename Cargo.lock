@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "bio_apis"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "bincode",
  "flate2",
