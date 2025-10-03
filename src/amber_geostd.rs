@@ -14,7 +14,8 @@ const BASE_URL: &str = "https://www.athanorlab.com";
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct GeostdItem {
-    pub ident: String,
+    pub ident_pdbe: String,
+    pub pubchem_cid: Option<u32>,
     pub frcmod_avail: bool,
     pub lib_avail: bool,
 }
