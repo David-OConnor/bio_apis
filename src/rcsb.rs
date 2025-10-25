@@ -242,20 +242,20 @@ pub struct PdbSearchResults {
     pub result_set: Vec<PdbSearchResult>,
 }
 
-#[derive(Clone, Default, Debug, Deserialize)]
+#[derive(Clone, Default, PartialEq, Debug, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct PdbStruct {
     pub title: String,
 }
 
-#[derive(Clone, Default, Debug, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct Database2 {
     pub database_code: String,
     pub database_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct Cell {
     pub angle_alpha: f32,
@@ -267,7 +267,7 @@ pub struct Cell {
     pub zpdb: u8,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct Citation {
     pub country: Option<String>,
@@ -292,7 +292,7 @@ pub struct Citation {
     pub year: Option<u16>,
 }
 
-#[derive(Clone, Default, Debug, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct PdbxDatabaseStatus {
     pub deposit_site: Option<String>,
@@ -304,7 +304,7 @@ pub struct PdbxDatabaseStatus {
     pub sgentry: Option<String>,
 }
 
-#[derive(Clone, Default, Debug, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct RcsbEntryInfo {
     pub assembly_count: u32,
@@ -349,7 +349,7 @@ pub struct RcsbEntryInfo {
 
 /// Top-level struct for results from the RCSB data API.
 /// todo: Fill out fields A/R.
-#[derive(Clone, Default, Debug, Deserialize)]
+#[derive(Clone, Default, PartialEq, Debug, Deserialize)]
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
 pub struct PdbDataResults {
     #[serde(rename = "struct")]
@@ -701,7 +701,7 @@ pub fn load_map(ident: &str) -> Result<Vec<u8>, ReqError> {
 }
 
 #[cfg_attr(feature = "encode", derive(Encode, Decode))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FilesAvailable {
     pub validation: bool,
     pub validation_2fo_fc: bool,
