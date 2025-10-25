@@ -26,7 +26,7 @@ pub struct GeostdData {
     pub mol2: String,
     pub frcmod: Option<String>,
     pub lib: Option<String>,
-    pub pubchem_cid: Option<u32>
+    pub pubchem_cid: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

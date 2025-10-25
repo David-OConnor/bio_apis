@@ -536,7 +536,6 @@ fn cif_gz_url(ident: &str) -> String {
     cif_url(ident) + ".gz"
 }
 
-// todo: THis validation is likely incompatible with 12-letter new identifiers.
 /// Do not use directly: Helper for the 3 validation types.
 /// This and the URL functions that call it are fallible due to needing part of the ident as part of the URL.
 fn validation_base_url(ident: &str) -> io::Result<String> {
@@ -547,11 +546,8 @@ fn validation_base_url(ident: &str) -> io::Result<String> {
         ));
     }
 
-    let ident_middle = &ident[1..3];
-
     Ok(format!(
-        "https://files.rcsb.org/pub/pdb/validation_reports/{}/{ident}/{ident}_validation",
-        ident_middle
+        "https://files.rcsb.org/validation/download/{ident}_validation"
     ))
 }
 

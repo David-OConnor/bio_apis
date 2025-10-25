@@ -1,8 +1,6 @@
 //! [Home page](https://www.ebi.ac.uk/pdbe/)
 //! [API docs](https://www.ebi.ac.uk/pdbe/api/)
 
-use serde::Deserialize;
-
 use crate::{ReqError, make_agent};
 
 const BASE_URL: &str = "https://www.ebi.ac.uk/pdbe-srv/pdbechem/chemicalCompound/show";

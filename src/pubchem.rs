@@ -9,6 +9,7 @@ const BASE_URL: &str = "https://pubchem.ncbi.nlm.nih.gov/compound";
 const PROTEIN_LOOKUP_URL: &str =
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/structure/compound";
 
+#[allow(unused)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct Taxonomy {
     #[serde(rename = "ID")]
