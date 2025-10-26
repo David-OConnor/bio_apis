@@ -85,12 +85,14 @@ pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
 /// This seems to work using pdbE/Amber identifiers as well as PubChem.
 pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
-
     let url = format!("https://cactus.nci.nih.gov/chemical/structure/{ident}/smiles");
 
-    Ok(agent
-        .get(url)
-        .call()?
-        .body_mut()
-        .read_to_string()?)
+    // Make sure to catch the HTTP != 200, and return an error: Otherwise the result will be an OK with
+    // brief HTML failure message string.
+    let mut resp = agent.get(url).call()?;
+    if resp.status() != 200 {
+        return Err(ReqError::Http);
+    }
+
+    Ok(resp.body_mut().read_to_string()?)
 }
