@@ -79,3 +79,18 @@ pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
         .body_mut()
         .read_to_string()?)
 }
+
+
+/// Get the Simplified Molecular Input Line Entry System (SMILES) representation from an identifier.
+/// This seems to work using pdbE/Amber identifiers as well as PubChem.
+pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+
+    let url = format!("https://cactus.nci.nih.gov/chemical/structure/{ident}/smiles");
+
+    Ok(agent
+        .get(url)
+        .call()?
+        .body_mut()
+        .read_to_string()?)
+}
