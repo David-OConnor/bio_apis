@@ -30,6 +30,23 @@ let sdf_data = pubchem::load_sdf(ident).unwrap();
 pubchem::open_overview(ident);
 ```
 
+We support flexible queries of the [Pubchem URL-based API](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest#section=URL-based-API) using the `pubchem::url_api_query()` function. Parameters
+are passed as enums to pull various data from this flexble API. Example:
+
+```rust
+let resp = url_api_query(
+    Domain::Compound,
+    Namespace::Compound(NamespaceCompound::FastSearch((
+        FastSearchCat::FastSimilarity3d,
+        StructureSearchNamespace::Cid,
+    ))),
+    &[cid.to_string()],
+    OperationSpecification::Compound(OpSpecCompound::Cids),
+)?;
+```
+
+This returns a string, which can be further parsed based on the nature of the data. For example,
+parsing into a structure or array using Serde, depending on the shape of the output for a given query.
 
 WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
 
