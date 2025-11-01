@@ -1,6 +1,6 @@
 [package]
 name = "bio_apis"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2024"
 authors = ["David O'Connor <the_alchemist@fastmail.com>"]
 description = "DNA and RNA sequence types and functions"

@@ -376,17 +376,16 @@ pub fn load_associated_structures(ident_pubchem: u32) -> Result<Vec<ProteinStruc
     Ok(parsed.structure.structures)
 }
 
-fn sdf_url(ident: &str) -> String {
-    let ident_ = ident.to_uppercase();
-    format!("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{ident_}/SDF?record_type=3d",)
+fn sdf_url(cid: u32) -> String {
+    format!("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/SDF?record_type=3d",)
 }
 
 /// Download an SDF file from PubChem, returning an SDF string.
-pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
+pub fn load_sdf(cid: u32) -> Result<String, ReqError> {
     let agent = make_agent();
 
     Ok(agent
-        .get(sdf_url(ident))
+        .get(sdf_url(cid))
         .call()?
         .body_mut()
         .read_to_string()?)
@@ -394,6 +393,7 @@ pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
 
 /// Get the Simplified Molecular Input Line Entry System (SMILES) representation from an identifier.
 /// This seems to work using pdbE/Amber identifiers as well as PubChem.
+/// todo: Support SELFEIS too; doesn't seem to be available.
 pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
     let url = format!("https://cactus.nci.nih.gov/chemical/structure/{ident}/smiles");
