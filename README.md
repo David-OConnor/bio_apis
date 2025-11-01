@@ -26,6 +26,7 @@ let cif_text = rcsb::load_cif(ident).unwrap();
 
 let sdf_data = drugbank::load_sdf(ident).unwrap();
 let sdf_data = pubchem::load_sdf(ident).unwrap();
+let mol2_data = amber_geostd::load_mol2(ident).unwrap();
 
 pubchem::open_overview(ident);
 ```

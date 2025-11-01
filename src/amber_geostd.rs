@@ -66,7 +66,7 @@ pub fn find_mols(search_text: &str) -> Result<Vec<GeostdItem>, ReqError> {
     Ok(parsed.result)
 }
 
-/// Download a Mol2 file's text, and if available, FRCMOD and Lib.
+/// Download a Mol2 file's text, and if available, FRCMOD and Lib, as well as metadata
 pub fn load_mol_files(ident: &str) -> Result<GeostdData, ReqError> {
     let agent = make_agent();
 
@@ -84,4 +84,11 @@ pub fn load_mol_files(ident: &str) -> Result<GeostdData, ReqError> {
         .read_to_string()?;
 
     Ok(serde_json::from_str(&resp)?)
+}
+
+
+/// Download a Mol2 file from our Amber Geostd database, returning an Mol2 string.
+pub fn load_mol2(ident: &str) -> Result<String, ReqError> {
+    let data = load_mol_files(ident)?;
+    Ok(data.mol2)
 }
