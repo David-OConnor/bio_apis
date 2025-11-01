@@ -366,8 +366,8 @@ pub fn open_overview(id: u32) {
 
 /// Find proteins associated with this small organic molecule, e.g. if it's a ligand,
 /// which proteins it can bind to. This notably includes PDB urls
-pub fn load_associated_structures(ident_pubchem: u32) -> Result<Vec<ProteinStructure>, ReqError> {
-    let url = format!("{PROTEIN_LOOKUP_URL}/{ident_pubchem}/JSON");
+pub fn load_associated_structures(cid: u32) -> Result<Vec<ProteinStructure>, ReqError> {
+    let url = format!("{PROTEIN_LOOKUP_URL}/{cid}/JSON");
     let agent = make_agent();
 
     let resp = agent.get(url).call()?.body_mut().read_to_string()?;
