@@ -86,7 +86,6 @@ pub fn load_mol_files(ident: &str) -> Result<GeostdData, ReqError> {
     Ok(serde_json::from_str(&resp)?)
 }
 
-
 /// Download a Mol2 file from our Amber Geostd database, returning an Mol2 string.
 pub fn load_mol2(ident: &str) -> Result<String, ReqError> {
     let data = load_mol_files(ident)?;

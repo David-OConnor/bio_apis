@@ -630,19 +630,13 @@ fn decode_gz_str_resp(resp: Response<Body>) -> Result<String, ReqError> {
 }
 
 /// Download a (atomic coordinates) mmCIF file (protein atom coords and metadata) from the RCSB,
-/// returning an a CIF string. Downloads the compressed (.gz) version, then deocompresses, to save
+/// returning a CIF string. Downloads the compressed (.gz) version, then deocompresses, to save
 /// bandwidth.
 pub fn load_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
     let resp = agent.get(&cif_gz_url(ident)).call()?;
     decode_gz_str_resp(resp)
-
-    // Ok(agent
-    //     .get(cif_url(ident))
-    //     .call()?
-    //     .body_mut()
-    //     .read_to_string()?)
 }
 
 /// Download a validation mmCIF file (Related to electron density??) from the RCSB, returning an CIF string.

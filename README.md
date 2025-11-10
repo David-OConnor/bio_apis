@@ -3,6 +3,7 @@
 [![Crate](https://img.shields.io/crates/v/bio_apis.svg)](https://crates.io/crates/bio_apis)
 [![Docs](https://docs.rs/bio_apis/badge.svg)](https://docs.rs/bio_apis)
 
+[Home page](https://www.athanorlab.com/rust-tools)
 
 This library contains abstractions to interact with the public biology databases that hav HTTP APIs. It uses rigid
 data structures for requests and responses, and enums where possible to constrain API options.

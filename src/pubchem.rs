@@ -329,7 +329,7 @@ pub fn url_api_query(
 #[derive(Clone, Debug, Deserialize)]
 struct SimilarMolsCidResp {
     #[serde(rename = "CID")]
-    pub cid: Vec<u32>
+    pub cid: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
