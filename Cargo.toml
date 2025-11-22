@@ -16,7 +16,7 @@ exclude = [".gitignore"]
 
 
 [dependencies]
-ureq = "3.1.2"
+ureq = "3.1.4"
 url = "2.5.7"
 webbrowser = "1.0.4"
 na_seq = "0.3.6"

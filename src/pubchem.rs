@@ -3,7 +3,11 @@
 //!
 //! This includes specific lookups, and an interface to the general URL-based API.
 
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    io,
+    io::ErrorKind,
+};
 
 use serde::Deserialize;
 
@@ -406,4 +410,44 @@ pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
     }
 
     Ok(resp.body_mut().read_to_string()?)
+}
+
+#[allow(unused)]
+#[derive(Clone, Debug, Deserialize)]
+struct RecordIdB {
+    cid: u32,
+}
+
+#[allow(unused)]
+#[derive(Clone, Debug, Deserialize)]
+struct RecordIdA {
+    id: RecordIdB,
+}
+
+#[allow(unused)]
+#[derive(Clone, Debug, Deserialize)]
+struct PcCompound {
+    id: RecordIdA,
+    // todo: Other fields A/R.
+    // atoms: Vec<u32>,
+}
+
+#[allow(unused)]
+#[derive(Clone, Debug, Deserialize)]
+struct RecordResp {
+    #[serde(rename = "PC_Compounds")]
+    pc_compounds: Vec<PcCompound>,
+}
+
+/// Load a list of CIDs from a name search
+pub fn find_cids_from_search(name: &str) -> Result<Vec<u32>, ReqError> {
+    let domain = Domain::Compound; // todo: Compound, Protein, both? Try one then the other?
+    let namespace = Namespace::Compound(NamespaceCompound::Name);
+    let op_spec = OperationSpecification::Compound(OpSpecCompound::Record);
+
+    let data = url_api_query(domain, namespace, &[name.to_string()], op_spec)?;
+
+    let result: RecordResp = serde_json::from_str(&data)?;
+
+    Ok(result.pc_compounds.iter().map(|p| p.id.id.cid).collect())
 }
