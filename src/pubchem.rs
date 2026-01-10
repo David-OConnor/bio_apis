@@ -392,15 +392,19 @@ pub fn load_sdf(cid: u32) -> Result<String, ReqError> {
 }
 
 /// Get the Simplified Molecular Input Line Entry System (SMILES) representation from an identifier.
-/// This seems to work using pdbE/Amber identifiers as well as PubChem.
+/// This seems to work using pdbE/Amber identifiers. Not technically pubchem, but is
+/// from NIH.gov.
 /// todo: Support SELFEIS too; doesn't seem to be available.
-pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
+pub fn get_smiles_chem_name(name: &str) -> Result<String, ReqError> {
     let agent = make_agent();
-    let url = format!("https://cactus.nci.nih.gov/chemical/structure/{ident}/smiles");
+    let url = format!("https://cactus.nci.nih.gov/chemical/structure/{name}/smiles");
 
     // Make sure to catch the HTTP != 200, and return an error: Otherwise the result will be an OK with
     // brief HTML failure message string.
     let mut resp = agent.get(url).call()?;
+
+    println!("SMILES RESP: {:?}", resp); // todo temp
+
     if resp.status() != 200 {
         return Err(ReqError::Http);
     }
@@ -408,9 +412,23 @@ pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
     Ok(resp.body_mut().read_to_string()?)
 }
 
+fn pubchem_smiles_url(cid: u32) -> String {
+    format!("{BASE_PUG_URL}/compound/cid/{cid}/property/IsomericSMILES/TXT")
+}
+
+/// Get SMILES directly from a PubChem CID via PUG-REST.
+pub fn get_smiles(cid: u32) -> Result<String, ReqError> {
+    let agent = make_agent();
+    let url = pubchem_smiles_url(cid);
+
+    let mut resp = agent.get(url).call()?;
+    let s = resp.body_mut().read_to_string()?;
+    Ok(s.trim().to_string())
+}
+
 /// We do this via an intermedia SMILES representation.
 pub fn get_cid_from_pdbe_id(pdb_id: &str) -> Result<u32, ReqError> {
-    let smiles = get_smiles(pdb_id)?;
+    let smiles = get_smiles_chem_name(pdb_id)?;
     let cids = find_cids_from_search(&smiles, true)?;
 
     Ok(cids[0])
