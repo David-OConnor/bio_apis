@@ -3,11 +3,7 @@
 //!
 //! This includes specific lookups, and an interface to the general URL-based API.
 
-use std::{
-    fmt::{Display, Formatter},
-    io,
-    io::ErrorKind,
-};
+use std::fmt::{Display, Formatter};
 
 use serde::Deserialize;
 
@@ -412,6 +408,14 @@ pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
     Ok(resp.body_mut().read_to_string()?)
 }
 
+/// We do this via an intermedia SMILES representation.
+pub fn get_cid_from_pdbe_id(pdb_id: &str) -> Result<u32, ReqError> {
+    let smiles = get_smiles(pdb_id)?;
+    let cids = find_cids_from_search(&smiles, true)?;
+
+    Ok(cids[0])
+}
+
 #[allow(unused)]
 #[derive(Clone, Debug, Deserialize)]
 struct RecordIdB {
@@ -440,9 +444,16 @@ struct RecordResp {
 }
 
 /// Load a list of CIDs from a name search
-pub fn find_cids_from_search(name: &str) -> Result<Vec<u32>, ReqError> {
+pub fn find_cids_from_search(name: &str, smiles: bool) -> Result<Vec<u32>, ReqError> {
     let domain = Domain::Compound; // todo: Compound, Protein, both? Try one then the other?
-    let namespace = Namespace::Compound(NamespaceCompound::Name);
+
+    let nsc = if smiles {
+        NamespaceCompound::Smiles
+    } else {
+        NamespaceCompound::Name
+    };
+    let namespace = Namespace::Compound(nsc);
+
     let op_spec = OperationSpecification::Compound(OpSpecCompound::Record);
 
     let data = url_api_query(domain, namespace, &[name.to_string()], op_spec)?;
