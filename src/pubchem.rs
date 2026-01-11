@@ -426,12 +426,13 @@ pub fn get_smiles(cid: u32) -> Result<String, ReqError> {
     Ok(s.trim().to_string())
 }
 
-/// We do this via an intermedia SMILES representation.
-pub fn get_cid_from_pdbe_id(pdb_id: &str) -> Result<u32, ReqError> {
+/// We do this via an intermediate SMILES representation.
+/// Also returns the SMILES, as we load it anyway.
+pub fn get_cid_from_pdbe_id(pdb_id: &str) -> Result<(u32, String), ReqError> {
     let smiles = get_smiles_chem_name(pdb_id)?;
     let cids = find_cids_from_search(&smiles, true)?;
 
-    Ok(cids[0])
+    Ok((cids[0], smiles))
 }
 
 #[allow(unused)]
