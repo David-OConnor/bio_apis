@@ -376,16 +376,17 @@ pub fn load_associated_structures(cid: u32) -> Result<Vec<ProteinStructure>, Req
     Ok(parsed.structure.structures)
 }
 
-fn sdf_url(cid: u32) -> String {
-    format!("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/SDF?record_type=3d",)
+/// Note: If id is a u32 CID`, convert to str prior to passing here.
+fn sdf_url(id_type: StructureSearchNamespace, id: &str) -> String {
+    format!("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/{id_type}/{id}/SDF?record_type=3d",)
 }
 
 /// Download an SDF file from PubChem, returning an SDF string.
-pub fn load_sdf(cid: u32) -> Result<String, ReqError> {
+pub fn load_sdf(id_type: StructureSearchNamespace, id: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
     Ok(agent
-        .get(sdf_url(cid))
+        .get(sdf_url(id_type, id))
         .call()?
         .body_mut()
         .read_to_string()?)
@@ -402,8 +403,6 @@ pub fn get_smiles_chem_name(name: &str) -> Result<String, ReqError> {
     // Make sure to catch the HTTP != 200, and return an error: Otherwise the result will be an OK with
     // brief HTML failure message string.
     let mut resp = agent.get(url).call()?;
-
-    println!("SMILES RESP: {:?}", resp); // todo temp
 
     if resp.status() != 200 {
         return Err(ReqError::Http);
