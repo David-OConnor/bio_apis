@@ -15,6 +15,7 @@ pub mod rcsb;
 pub enum ReqError {
     Http,
     Ser(serde_json::Error),
+    Deserialize,
     Io(io::Error),
 }
 

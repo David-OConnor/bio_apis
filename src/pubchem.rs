@@ -5,6 +5,7 @@
 
 use std::fmt::{Display, Formatter};
 
+use bincode::{Decode, Encode};
 use serde::Deserialize;
 
 use crate::{ReqError, make_agent};
@@ -127,6 +128,7 @@ impl Display for FastSearchCat {
 pub enum StructureSearchNamespace {
     Smiles,
     Inchi,
+    InchiKey,
     Sdf,
     Cid,
 }
@@ -136,6 +138,7 @@ impl Display for StructureSearchNamespace {
         let v = match self {
             Self::Smiles => "smiles",
             Self::Inchi => "inchi",
+            Self::InchiKey => "inchikey",
             Self::Sdf => "sdf",
             Self::Cid => "cid",
         };
@@ -423,6 +426,109 @@ pub fn get_smiles(cid: u32) -> Result<String, ReqError> {
     let mut resp = agent.get(url).call()?;
     let s = resp.body_mut().read_to_string()?;
     Ok(s.trim().to_string())
+}
+
+/// Todo: You could make this more generic.
+fn properties_url(cid: u32) -> String {
+    format!(
+        "{BASE_PUG_URL}/compound/cid/{cid}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
+    InChIKey,IUPACName,Title/JSON"
+    )
+}
+
+/// This is currently a curated set for a specific application in Molchanica.
+/// [Properties list](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest#section=Compound-Property-Tables)
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+pub struct Properties {
+    /// Computationally generated octanol-water partition coefficient or distribution coefficient.
+    /// XLogP is used as a measure of hydrophilicity or hydrophobicity of a molecule.
+    pub log_p: f32,
+    pub total_polar_surface_area: f32,
+    /// The molecular complexity rating of a compound, computed using the Bertz/Hendrickson/Ihlenfeldt formula.
+    pub complexity: f32,
+    /// Analytic volume of the first diverse conformer (default conformer) for a compound.
+    pub volume: f32,
+    /// A SMILES (Simplified Molecular Input Line Entry System) string, which includes both stereochemical and isotopic information. See the glossary entry on SMILES for more detail.
+    pub smiles: String,
+    /// Standard IUPAC International Chemical Identifier (InChI). It does not allow for user
+    /// selectable options in dealing with the stereochemistry and tautomer layers of the InChI string.
+    pub inchi: String,
+    /// Hashed version of the full standard InChI, consisting of 27 characters.
+    pub inchi_key: String,
+    /// Chemical name systematically determined according to the IUPAC nomenclatures.
+    pub iupac_name: String,
+    /// The title used for the compound summary page.
+    pub title: String,
+}
+
+/// Deserializing only
+#[derive(Debug, Deserialize)]
+struct PropertyTableResp {
+    #[serde(rename = "PropertyTable")]
+    property_table: PropertyTableInner,
+}
+
+/// Deserializing only
+#[derive(Debug, Deserialize)]
+struct CompoundProps {
+    #[serde(rename = "CID")]
+    cid: u32,
+    // These names match PubChem's PUG-REST property tokens.
+    #[serde(rename = "TPSA")]
+    tpsa: f32,
+    #[serde(rename = "XLogP")]
+    xlogp: f32,
+    #[serde(rename = "Complexity")]
+    complexity: f32,
+    #[serde(rename = "Volume3D")]
+    volume: f32,
+    #[serde(rename = "SMILES")]
+    smiles: String,
+    #[serde(rename = "InChI")]
+    inchi: String,
+    #[serde(rename = "InChIKey")]
+    inchi_key: String,
+    #[serde(rename = "IUPACName")]
+    iupac_name: String,
+    #[serde(rename = "Title")]
+    title: String,
+}
+
+/// Deserializing only
+#[derive(Debug, Deserialize)]
+struct PropertyTableInner {
+    #[serde(rename = "Properties")]
+    properties: Vec<CompoundProps>,
+}
+
+/// Get SMILES directly from a PubChem CID via PUG-REST.
+pub fn properties(cid: u32) -> Result<Properties, ReqError> {
+    let agent = make_agent();
+    let url = properties_url(cid);
+
+    let mut resp = agent.get(url).call()?;
+    let body = resp.body_mut().read_to_string()?;
+
+    let parsed: PropertyTableResp = serde_json::from_str(&body)?;
+    let row = parsed
+        .property_table
+        .properties
+        .into_iter()
+        .next()
+        .ok_or(ReqError::Deserialize)?;
+
+    Ok(Properties {
+        log_p: row.xlogp,
+        total_polar_surface_area: row.tpsa,
+        complexity: row.complexity,
+        volume: row.volume,
+        smiles: row.smiles,
+        inchi: row.inchi,
+        inchi_key: row.inchi_key,
+        iupac_name: row.iupac_name,
+        title: row.title,
+    })
 }
 
 /// We do this via an intermediate SMILES representation.
