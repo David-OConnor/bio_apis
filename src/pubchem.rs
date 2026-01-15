@@ -5,7 +5,6 @@
 
 use std::fmt::{Display, Formatter};
 
-use bincode::{Decode, Encode};
 use serde::Deserialize;
 
 use crate::{ReqError, make_agent};
@@ -439,7 +438,7 @@ fn properties_url(id_type: StructureSearchNamespace, id: &str) -> String {
 /// This is currently a curated set for a specific application in Molchanica.
 /// [Properties list](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest#section=Compound-Property-Tables)
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "encode", derive(Encode, Decode))]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
 pub struct Properties {
     /// Computationally generated octanol-water partition coefficient or distribution coefficient.
     /// XLogP is used as a measure of hydrophilicity or hydrophobicity of a molecule.
