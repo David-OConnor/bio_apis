@@ -429,9 +429,9 @@ pub fn get_smiles(cid: u32) -> Result<String, ReqError> {
 }
 
 /// Todo: You could make this more generic.
-fn properties_url(cid: u32) -> String {
+fn properties_url(id_type: StructureSearchNamespace, id: &str) -> String {
     format!(
-        "{BASE_PUG_URL}/compound/cid/{cid}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
+        "{BASE_PUG_URL}/compound/{id_type}/{id}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
     InChIKey,IUPACName,Title/JSON"
     )
 }
@@ -502,15 +502,16 @@ struct PropertyTableInner {
     properties: Vec<CompoundProps>,
 }
 
-/// Get SMILES directly from a PubChem CID via PUG-REST.
-pub fn properties(cid: u32) -> Result<Properties, ReqError> {
+/// Get properties from an ID.
+pub fn properties(id_type: StructureSearchNamespace, id: &str) -> Result<Properties, ReqError> {
     let agent = make_agent();
-    let url = properties_url(cid);
+    let url = properties_url(id_type, id);
 
     let mut resp = agent.get(url).call()?;
     let body = resp.body_mut().read_to_string()?;
 
     let parsed: PropertyTableResp = serde_json::from_str(&body)?;
+
     let row = parsed
         .property_table
         .properties
@@ -529,6 +530,11 @@ pub fn properties(cid: u32) -> Result<Properties, ReqError> {
         iupac_name: row.iupac_name,
         title: row.title,
     })
+}
+
+pub fn properties_from_pdbe_id(pdb_id: &str) -> Result<Properties, ReqError> {
+    let smiles = get_smiles_chem_name(pdb_id)?;
+    properties(StructureSearchNamespace::Smiles, &smiles)
 }
 
 /// We do this via an intermediate SMILES representation.
