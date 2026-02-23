@@ -6,15 +6,9 @@ authors = ["David O'Connor <the_alchemist@fastmail.com>"]
 description = "DNA and RNA sequence types and functions"
 keywords = ["dna", "primer", "biology", "pcr"]
 categories = [
-    "science",
     "science::bioinformatics",
-    #
-    "science::computational-biology",
     "science::computational-biology::structural-modeling",
-    #
-    "science::computational-chemistry",
     "science::computational-chemistry::cheminformatics",
-    #
     "api-bindings"
 ]
 repository = "https://github.com/David-OConnor/bio_apis"
