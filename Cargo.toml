@@ -1,12 +1,21 @@
 [package]
 name = "bio_apis"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 authors = ["David O'Connor <the_alchemist@fastmail.com>"]
 description = "DNA and RNA sequence types and functions"
 keywords = ["dna", "primer", "biology", "pcr"]
 categories = [
-    "science", "science::bioinformatics", "api-bindings"
+    "science",
+    "science::bioinformatics",
+    #
+    "science::computational-biology",
+    "science::computational-biology::structural-modeling",
+    #
+    "science::computational-chemistry",
+    "science::computational-chemistry::cheminformatics",
+    #
+    "api-bindings"
 ]
 repository = "https://github.com/David-OConnor/bio_apis"
 documentation = "https://docs.rs/bio_apis"
