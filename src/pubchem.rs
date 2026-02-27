@@ -429,8 +429,11 @@ pub fn get_smiles(cid: u32) -> Result<String, ReqError> {
 
 /// Todo: You could make this more generic.
 fn properties_url(id_type: StructureSearchNamespace, id: &str) -> String {
+    // e.g. this is sometimes a problem with SMILES queries.
+    let id_santizied = id.replace("#", "%23");
+
     format!(
-        "{BASE_PUG_URL}/compound/{id_type}/{id}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
+        "{BASE_PUG_URL}/compound/{id_type}/{id_santizied}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
     InChIKey,IUPACName,Title/JSON"
     )
 }
@@ -448,6 +451,8 @@ pub struct Properties {
     pub complexity: f32,
     /// Analytic volume of the first diverse conformer (default conformer) for a compound.
     pub volume: f32,
+    /// E.g., if loaded from SMILES or some other query, that's not a CID.
+    pub cid: u32,
     /// A SMILES (Simplified Molecular Input Line Entry System) string, which includes both stereochemical and isotopic information. See the glossary entry on SMILES for more detail.
     pub smiles: String,
     /// Standard IUPAC International Chemical Identifier (InChI). It does not allow for user
@@ -469,6 +474,7 @@ struct PropertyTableResp {
 }
 
 /// Deserializing only
+#[allow(unused)]
 #[derive(Debug, Deserialize)]
 struct CompoundProps {
     #[serde(rename = "CID")]
@@ -523,6 +529,7 @@ pub fn properties(id_type: StructureSearchNamespace, id: &str) -> Result<Propert
         total_polar_surface_area: row.tpsa,
         complexity: row.complexity,
         volume: row.volume,
+        cid: row.cid,
         smiles: row.smiles,
         inchi: row.inchi,
         inchi_key: row.inchi_key,
