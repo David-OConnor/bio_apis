@@ -3,13 +3,12 @@
 //! [API docs](https://www.ebi.ac.uk/chebi/backend/api/docs/)
 //!
 //! ChEBI (Chemical Entities of Biological Interest) is a dictionary of small molecules, hosted
-//! by the EBI. This module targets the ChEBI 2.0 REST API; the older SOAP web services were
-//! retired 2025-09-01.
+//! by the EBI.
 //!
-//! Note: Identifiers here are ChEBI accessions. Functions accept either the prefixed form
+//! Identifiers here are ChEBI accessions. Functions accept either the prefixed form
 //! (`CHEBI:46195`, case-insensitive) or the bare number (`46195`).
 //!
-//! Note: Text fields from ChEBI (names, definitions) may contain HTML markup, e.g.
+//! Text fields from ChEBI (names, definitions) may contain HTML markup, e.g.
 //! `<em>N</em>-acetyl-<em>p</em>-aminophenol`. The `ascii_name` fields are the markup-free
 //! equivalents.
 
@@ -352,12 +351,7 @@ fn get(url: &str) -> Result<String, ReqError> {
     Ok(resp.body_mut().read_to_string()?)
 }
 
-pub fn open_overview(ident: &str) {
-    let Ok(id) = parse_id(ident) else {
-        eprintln!("Invalid ChEBI identifier: {ident}");
-        return;
-    };
-
+pub fn open_overview(id: u32) {
     if let Err(e) = webbrowser::open(&format!("{BASE_URL}/CHEBI:{id}")) {
         eprintln!("Failed to open the web browser: {:?}", e);
     }
@@ -365,8 +359,7 @@ pub fn open_overview(ident: &str) {
 
 /// Load the full ChEBI record for an entity. Secondary (deprecated) accessions resolve to their
 /// primary entry.
-pub fn load_compound(ident: &str) -> Result<Compound, ReqError> {
-    let id = parse_id(ident)?;
+pub fn load_compound(id: u32) -> Result<Compound, ReqError> {
     let url = format!("{API_URL}/compound/{id}/");
 
     Ok(serde_json::from_str(&get(&url)?)?)
@@ -375,17 +368,17 @@ pub fn load_compound(ident: &str) -> Result<Compound, ReqError> {
 /// Load several records in a single request. Accessions ChEBI doesn't recognize are simply absent
 /// from the result; the caller should chunk very large lists, as a long request URL can be
 /// rejected.
-pub fn load_compounds(idents: &[String]) -> Result<Vec<Compound>, ReqError> {
+pub fn load_compounds(idents: &[u32]) -> Result<Vec<Compound>, ReqError> {
     if idents.is_empty() {
         return Ok(Vec::new());
     }
 
-    let ids: Result<Vec<String>, ReqError> = idents
+    let ids: Vec<String> = idents
         .iter()
-        .map(|i| parse_id(i).map(|id| id.to_string()))
+        .map(|i| i.to_string())
         .collect();
 
-    let url = format!("{API_URL}/compounds/?chebi_ids={}", ids?.join(","));
+    let url = format!("{API_URL}/compounds/?chebi_ids={}", ids.join(","));
 
     let parsed: HashMap<String, CompoundEntry> = serde_json::from_str(&get(&url)?)?;
 
@@ -393,12 +386,12 @@ pub fn load_compounds(idents: &[String]) -> Result<Vec<Compound>, ReqError> {
 }
 
 /// A curated subset of a record's data. See `load_compound` for everything ChEBI has.
-pub fn properties(ident: &str) -> Result<Properties, ReqError> {
+pub fn properties(ident: u32) -> Result<Properties, ReqError> {
     Ok((&load_compound(ident)?).into())
 }
 
 /// Get the Simplified Molecular Input Line Entry System (SMILES) representation of an entity.
-pub fn get_smiles(ident: &str) -> Result<String, ReqError> {
+pub fn get_smiles(ident: u32) -> Result<String, ReqError> {
     load_compound(ident)?
         .default_structure
         .and_then(|s| s.smiles)
@@ -414,8 +407,7 @@ fn mol_url(id: u32) -> String {
 ///
 /// Returns `ReqError::Deserialize` for entities with no structure; ChEBI answers those with an
 /// empty body.
-pub fn load_mol(ident: &str) -> Result<String, ReqError> {
-    let id = parse_id(ident)?;
+pub fn load_mol(id: u32) -> Result<String, ReqError> {
     let result = get(&mol_url(id))?;
 
     if result.trim().is_empty() {
@@ -428,7 +420,7 @@ pub fn load_mol(ident: &str) -> Result<String, ReqError> {
 /// Download a structure from ChEBI as an SDF string. ChEBI serves MDL Molfiles, which are SDF
 /// records without the `$$$$` terminator (and without data fields), so we append one. Note that
 /// these are 2D.
-pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
+pub fn load_sdf(ident: u32) -> Result<String, ReqError> {
     let mol = load_mol(ident)?;
 
     Ok(format!("{}\n$$$$\n", mol.trim_end()))
@@ -507,8 +499,7 @@ struct OntologyResp {
 }
 
 /// Load the ontology parents of an entity, e.g. the classes it *is a*, and the roles it *has*.
-pub fn load_parents(ident: &str) -> Result<Vec<OntologyRelation>, ReqError> {
-    let id = parse_id(ident)?;
+pub fn load_parents(id: u32) -> Result<Vec<OntologyRelation>, ReqError> {
     let url = format!("{API_URL}/ontology/parents/CHEBI:{id}/");
 
     let parsed: OntologyResp = serde_json::from_str(&get(&url)?)?;
@@ -517,8 +508,7 @@ pub fn load_parents(ident: &str) -> Result<Vec<OntologyRelation>, ReqError> {
 
 /// Load the ontology children of an entity, e.g. the compounds that *are a* member of this class.
 /// Note that this can be a large response for high-level classes.
-pub fn load_children(ident: &str) -> Result<Vec<OntologyRelation>, ReqError> {
-    let id = parse_id(ident)?;
+pub fn load_children(id: u32) -> Result<Vec<OntologyRelation>, ReqError> {
     let url = format!("{API_URL}/ontology/children/CHEBI:{id}/");
 
     let parsed: OntologyResp = serde_json::from_str(&get(&url)?)?;
