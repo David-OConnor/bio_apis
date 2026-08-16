@@ -5,16 +5,30 @@
 
 [Home page](https://www.athanorlab.com/rust-tools)
 
-This library contains abstractions to interact with the public biology databases that hav HTTP APIs. It uses rigid
+This library contains abstractions to interact with public biology databases that have HTTP APIs. It uses rigid
 data structures for requests and responses, and enums where possible to constrain API options.
 
+## APIs supported
+- [RCSB](https://data.rcsb.org/) (Protein data bank)
+- [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
+- [PDBe](https://www.ebi.ac.uk/pdbe/)
+- [DrugBank](https://docs.drugbank.com/v1/)
+- [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
+- [Rhea](https://www.rhea-db.org/)
+- [UniProt](https://www.uniprot.org/)
+- [ChEBI](https://www.ebi.ac.uk/chebi/)
+- [LMSD](https://www.lipidmaps.org)
+- Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules
+
+
 ## Example functionality:
-  - Download molecule data in various formats (e.g. CIF, SDF)
+  - Download molecule data in various formats (e.g. mmCIF, SDF)
   - Open your default web browser to a  molecule's overview page, 3D structure etc
   - Search APIs for molecule data, or filter and return a list of IDs.
-  - Load all information on a protein from the RCSB data API
-  - Load electron density data for a protein.
-  - Download a molecule based on its identifier.
+  - Load information on a protein from the RCSB data API or UniProt
+  - Load electron density data for a protein
+  - Query reactions on Rhea, and load associated enzymes and small molecules
+  - Download a molecule based on its identifier
 
 Example of various API functionality:
 
@@ -28,6 +42,13 @@ let cif_text = rcsb::load_cif(ident).unwrap();
 let sdf_data = drugbank::load_sdf(ident).unwrap();
 let sdf_data = pubchem::load_sdf(ident).unwrap();
 let mol2_data = amber_geostd::load_mol2(ident).unwrap();
+
+let protein = uniprot::load_protein("P69905").unwrap();
+let seq = protein.seq_aa();
+let structures = protein.pdb_ids();
+
+// A predicted structure, for proteins the PDB has no experimental one for.
+let cif_text = uniprot::load_alphafold_cif("P69905").unwrap();
 
 pubchem::open_overview(ident);
 ```
@@ -50,15 +71,5 @@ let resp = url_api_query(
 This returns a string, which can be further parsed based on the nature of the data. For example,
 parsing into a structure or array using Serde, depending on the shape of the output for a given query.
 
-WIP: Many features unsupported. Implementing as used by Daedelus and PlasCAD.
-
-## API support
-- [RCSB](https://data.rcsb.org/) (Protein data bank)
-- [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
-- [PDBe](https://www.ebi.ac.uk/pdbe/)
-- [DrugBank](https://docs.drugbank.com/v1/)
-- [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
-- [LMSD](https://www.lipidmaps.org)
-- Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules
 
 See the [API docs](https://docs.rs/bio_apis) for functionality.

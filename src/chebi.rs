@@ -374,10 +374,7 @@ pub fn load_compounds(idents: &[u32]) -> Result<Vec<Compound>, ReqError> {
         return Ok(Vec::new());
     }
 
-    let ids: Vec<String> = idents
-        .iter()
-        .map(|i| i.to_string())
-        .collect();
+    let ids: Vec<String> = idents.iter().map(|i| i.to_string()).collect();
 
     let url = format!("{API_URL}/compounds/?chebi_ids={}", ids.join(","));
 

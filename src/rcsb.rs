@@ -1,7 +1,6 @@
-//! For loading data from the RCSB website's API.
+//! For loading data from the RCSB website's API. This is a good option compared to
+//! UniProt for downloading 3d structure.
 
-//! For opening the browser to NCBI BLAST, PDB etc.
-//!
 //! PDB Search API: https://search.rcsb.org/#search-api
 //! PDB Data API: https://data.rcsb.org/#data-api
 
@@ -15,7 +14,7 @@ use bincode::{Decode, Encode};
 use flate2::read::GzDecoder;
 // todo: Determine if you want this.
 use na_seq::{AminoAcid, seq_aa_to_str};
-use rand::{self, Rng};
+use rand::{self, RngExt};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_aux::prelude::*;
 use serde_json::{self};
@@ -57,7 +56,6 @@ pub struct PdbSearchParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pattern: Option<String>,
 }
-// "greater", "exact_match", "in", "range", etc. (todo: enum)
 
 /// https://search.rcsb.org/#return-type
 #[derive(Clone, Copy, Default)]
