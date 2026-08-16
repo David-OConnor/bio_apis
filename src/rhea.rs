@@ -1,8 +1,8 @@
 //! [Home page](https://www.rhea-db.org/)
 //! [API docs](https://www.rhea-db.org/help/rest-api)
 //!
-//! Rhea is an expert-curated knowledgebase of biochemical reactions. Unlike PubChem, ChEBI and
-//! DrugBank, its entries are *reactions* rather than molecules; participants are ChEBI entities,
+//! Rhea is a curated knowledgebase of biochemical reactions. Its entries are *reactions*;
+//! participants are ChEBI entities,
 //! so `Reaction::participant_chebi_ids` feeds directly into the `chebi` module.
 //!
 //! Rhea's table API returns tab-separated values for a set of columns you choose; we parse those

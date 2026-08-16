@@ -325,6 +325,7 @@ impl std::fmt::Display for StructureSearchType {
 }
 
 /// Accepts `CHEBI:46195`, `chebi:46195`, or `46195`; returns the numeric portion.
+/// Can be used if the input format uses a string variant.
 pub fn parse_id(ident: &str) -> Result<u32, ReqError> {
     let v = ident.trim();
 
