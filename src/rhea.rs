@@ -1,0 +1,438 @@
+//! [Home page](https://www.rhea-db.org/)
+//! [API docs](https://www.rhea-db.org/help/rest-api)
+//!
+//! Rhea is an expert-curated knowledgebase of biochemical reactions. Unlike PubChem, ChEBI and
+//! DrugBank, its entries are *reactions* rather than molecules; participants are ChEBI entities,
+//! so `Reaction::participant_chebi_ids` feeds directly into the `chebi` module.
+//!
+//! Rhea's table API returns tab-separated values for a set of columns you choose; we parse those
+//! into `Reaction`. Note that `Reaction::enzyme_count` is a count only — see `uniprot_ids` to get
+//! the actual UniProtKB accessions.
+//!
+//! Note: Rhea asks that programs identify themselves via the User-Agent header, so we set one.
+//!
+//! Note: MDL CT files (RXN, RD) come from Rhea's ExPASy distribution site rather than
+//! www.rhea-db.org, whose per-entry file URLs sit behind a browser challenge that a plain HTTP
+//! client can't clear.
+
+use crate::{ReqError, make_agent};
+
+const BASE_URL: &str = "https://www.rhea-db.org";
+
+/// Rhea's official distribution site; see https://www.rhea-db.org/help/download.
+const CT_FILE_URL: &str = "https://ftp.expasy.org/databases/rhea/ctfiles";
+
+const UNIPROT_URL: &str = "https://rest.uniprot.org/uniprotkb/search";
+
+/// UniProt's per-page maximum on its search endpoint.
+const UNIPROT_PAGE_SIZE: u32 = 500;
+
+const USER_AGENT: &str = concat!(
+    "bio_apis/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/David-OConnor/bio_apis)"
+);
+
+/// The columns available from the table API.
+/// [Column list](https://www.rhea-db.org/help/rest-api)
+#[derive(Clone, Copy, PartialEq)]
+pub enum Column {
+    /// Reaction identifier, with the `RHEA` prefix.
+    RheaId,
+    /// Textual description of the reaction equation.
+    Equation,
+    /// ChEBI names of the reaction participants.
+    ChebiName,
+    /// ChEBI identifiers of the reaction participants.
+    ChebiId,
+    /// EC numbers, with the `EC` prefix.
+    Ec,
+    /// The *number* of UniProtKB entries annotated with this reaction.
+    Uniprot,
+    /// GO identifier (with the `GO` prefix) and label.
+    Go,
+    /// PubMed identifiers, without prefix.
+    Pubmed,
+    XrefEcoCyc,
+    XrefMetaCyc,
+    XrefKegg,
+    XrefReactome,
+    XrefMCsa,
+}
+
+impl std::fmt::Display for Column {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = match self {
+            Self::RheaId => "rhea-id",
+            Self::Equation => "equation",
+            Self::ChebiName => "chebi",
+            Self::ChebiId => "chebi-id",
+            Self::Ec => "ec",
+            Self::Uniprot => "uniprot",
+            Self::Go => "go",
+            Self::Pubmed => "pubmed",
+            Self::XrefEcoCyc => "reaction-xref(EcoCyc)",
+            Self::XrefMetaCyc => "reaction-xref(MetaCyc)",
+            Self::XrefKegg => "reaction-xref(KEGG)",
+            Self::XrefReactome => "reaction-xref(Reactome)",
+            Self::XrefMCsa => "reaction-xref(M-CSA)",
+        };
+        write!(f, "{v}")
+    }
+}
+
+/// The columns `Reaction` is built from. Rhea returns them in the order requested, so the parser
+/// indexes fields by position here.
+const REACTION_COLUMNS: [Column; 13] = [
+    Column::RheaId,
+    Column::Equation,
+    Column::ChebiName,
+    Column::ChebiId,
+    Column::Ec,
+    Column::Uniprot,
+    Column::Go,
+    Column::Pubmed,
+    Column::XrefKegg,
+    Column::XrefMetaCyc,
+    Column::XrefEcoCyc,
+    Column::XrefReactome,
+    Column::XrefMCsa,
+];
+
+/// Rhea assigns each reaction four consecutive identifiers: the master (undirected) reaction,
+/// then its left-to-right, right-to-left, and bidirectional variants. Searches index the master
+/// only, while MDL CT files exist for the two directional variants only; this picks between them.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Direction {
+    LeftToRight,
+    RightToLeft,
+}
+
+impl Direction {
+    /// The identifier of this directional variant of a master reaction.
+    pub fn id(&self, master_id: u32) -> u32 {
+        match self {
+            Self::LeftToRight => master_id + 1,
+            Self::RightToLeft => master_id + 2,
+        }
+    }
+}
+
+/// A Gene Ontology molecular-function term for a reaction.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct GoTerm {
+    /// E.g. "GO:0034875". Kept prefixed, as GO ids are zero-padded.
+    pub id: String,
+    /// E.g. "caffeine oxidase activity".
+    pub label: String,
+}
+
+/// A Rhea reaction. Identifiers here are stored without their database prefixes.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct Reaction {
+    /// The numeric portion of the master identifier, e.g. 10280 for RHEA:10280.
+    pub id: u32,
+    /// E.g. "caffeine + NADH + O2 + H(+) = theobromine + formaldehyde + NAD(+) + H2O".
+    pub equation: String,
+    /// ChEBI names of the participants, on both sides of the equation.
+    pub participant_names: Vec<String>,
+    /// ChEBI ids of the participants, e.g. 27732. Pass these to `chebi::load_compound`.
+    pub participant_chebi_ids: Vec<u32>,
+    /// E.g. "1.17.5.2".
+    pub ec_numbers: Vec<String>,
+    /// How many UniProtKB entries are annotated with this reaction. See `uniprot_ids` for the
+    /// accessions themselves.
+    pub enzyme_count: u32,
+    pub go: Option<GoTerm>,
+    pub pubmed_ids: Vec<u32>,
+    /// E.g. "R07980".
+    pub kegg: Vec<String>,
+    /// E.g. "RXN-11523".
+    pub metacyc: Vec<String>,
+    pub ecocyc: Vec<String>,
+    pub reactome: Vec<String>,
+    /// Mechanism and Catalytic Site Atlas.
+    pub m_csa: Vec<String>,
+}
+
+impl Reaction {
+    /// E.g. "RHEA:10280".
+    pub fn accession(&self) -> String {
+        format!("RHEA:{}", self.id)
+    }
+}
+
+/// Split a semicolon-separated column, dropping each value's prefix, e.g. `EC:`.
+fn split_col(field: &str, prefix: &str) -> Vec<String> {
+    field
+        .split(';')
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.strip_prefix(prefix).unwrap_or(v).to_owned())
+        .collect()
+}
+
+/// As `split_col`, but for numeric identifiers. Values that don't carry the prefix are skipped;
+/// e.g. the participants column can include RHEA-COMP entries alongside ChEBI ones.
+fn split_col_num(field: &str, prefix: &str) -> Vec<u32> {
+    field
+        .split(';')
+        .map(str::trim)
+        .filter_map(|v| v.strip_prefix(prefix))
+        .filter_map(|v| v.parse().ok())
+        .collect()
+}
+
+/// Parse the TSV table returned for `REACTION_COLUMNS`.
+fn parse_reactions(tsv: &str) -> Result<Vec<Reaction>, ReqError> {
+    let mut result = Vec::new();
+
+    // The first line is the human-readable column header.
+    for line in tsv.lines().skip(1) {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.len() < REACTION_COLUMNS.len() {
+            return Err(ReqError::Deserialize);
+        }
+
+        let id = cols[0]
+            .trim()
+            .strip_prefix("RHEA:")
+            .and_then(|v| v.parse().ok())
+            .ok_or(ReqError::Deserialize)?;
+
+        let go = cols[6].trim().split_once(' ').map(|(id, label)| GoTerm {
+            id: id.to_owned(),
+            label: label.to_owned(),
+        });
+
+        result.push(Reaction {
+            id,
+            equation: cols[1].trim().to_owned(),
+            participant_names: split_col(cols[2], ""),
+            participant_chebi_ids: split_col_num(cols[3], "CHEBI:"),
+            ec_numbers: split_col(cols[4], "EC:"),
+            enzyme_count: cols[5].trim().parse().unwrap_or_default(),
+            go,
+            pubmed_ids: split_col_num(cols[7], ""),
+            kegg: split_col(cols[8], "KEGG:"),
+            metacyc: split_col(cols[9], "MetaCyc:"),
+            ecocyc: split_col(cols[10], "EcoCyc:"),
+            reactome: split_col(cols[11], "Reactome:"),
+            m_csa: split_col(cols[12], "M-CSA:"),
+        });
+    }
+
+    Ok(result)
+}
+
+/// Rhea asks that programs identify themselves, so we set a User-Agent. We also ask for an
+/// unencoded body: UniProt gzips its responses when offered the chance, and our agent hands those
+/// back compressed.
+fn request(url: &str) -> Result<ureq::http::Response<ureq::Body>, ReqError> {
+    let agent = make_agent();
+
+    Ok(agent
+        .get(url)
+        .header("User-Agent", USER_AGENT)
+        .header("Accept-Encoding", "identity")
+        .call()?)
+}
+
+/// Our agent doesn't treat error status codes as errors. A malformed Rhea query answers 500 with
+/// an HTML page, which we'd otherwise hand back to the caller as if it were data.
+fn get(url: &str) -> Result<String, ReqError> {
+    let mut resp = request(url)?;
+
+    if resp.status() != 200 {
+        return Err(ReqError::Http);
+    }
+
+    Ok(resp.body_mut().read_to_string()?)
+}
+
+pub fn open_overview(id: u32) {
+    if let Err(e) = webbrowser::open(&format!("{BASE_URL}/rhea/{id}")) {
+        eprintln!("Failed to open the web browser: {:?}", e);
+    }
+}
+
+/// Calls the [table API](https://www.rhea-db.org/help/rest-api), returning raw TSV: a header row,
+/// then one row per reaction, with the columns in the order requested.
+///
+/// The query string uses the same syntax as the website's search box, e.g. `caffeine`,
+/// `rhea:10280`, `chebi:27732`, `ec:2.1.1.160`, `uniprot:Q9FLN8`, or `uniprot:*` for every
+/// reaction with a curated enzyme. An empty query returns the whole data set, so pass a `limit`
+/// unless you mean it.
+pub fn query_table(
+    query: &str,
+    columns: &[Column],
+    limit: Option<u32>,
+) -> Result<String, ReqError> {
+    let cols: Vec<String> = columns.iter().map(|c| c.to_string()).collect();
+
+    let mut params = url::form_urlencoded::Serializer::new(String::new());
+    params.append_pair("query", query);
+    params.append_pair("columns", &cols.join(","));
+    params.append_pair("format", "tsv");
+
+    if let Some(l) = limit {
+        params.append_pair("limit", &l.to_string());
+    }
+
+    get(&format!("{BASE_URL}/rhea/?{}", params.finish()))
+}
+
+/// Search for reactions. See `query_table` for the query syntax.
+pub fn search(query: &str, limit: Option<u32>) -> Result<Vec<Reaction>, ReqError> {
+    parse_reactions(&query_table(query, &REACTION_COLUMNS, limit)?)
+}
+
+/// Load a list of Rhea ids from a search. Analogous to `pubchem::find_cids_from_search`.
+pub fn find_ids_from_search(query: &str, limit: Option<u32>) -> Result<Vec<u32>, ReqError> {
+    let tsv = query_table(query, &[Column::RheaId], limit)?;
+
+    Ok(tsv
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.trim().strip_prefix("RHEA:"))
+        .filter_map(|v| v.parse().ok())
+        .collect())
+}
+
+/// Load a single reaction by its master id. Note that the search index holds master reactions
+/// only; the three directional variants aren't retrievable this way, as they share the master's
+/// data.
+pub fn load_reaction(id: u32) -> Result<Reaction, ReqError> {
+    search(&format!("rhea:{id}"), Some(1))?
+        .into_iter()
+        .next()
+        .ok_or(ReqError::Deserialize)
+}
+
+/// Find the reactions a molecule participates in, from its ChEBI id. This is the main bridge from
+/// the `chebi` module.
+pub fn reactions_from_chebi(chebi_id: u32, limit: Option<u32>) -> Result<Vec<Reaction>, ReqError> {
+    search(&format!("chebi:{chebi_id}"), limit)
+}
+
+/// Find the reactions catalysed by an enzyme class, e.g. "2.1.1.160". A partial EC number, e.g.
+/// "2.1.1.-", also works.
+pub fn reactions_from_ec(ec: &str, limit: Option<u32>) -> Result<Vec<Reaction>, ReqError> {
+    search(&format!("ec:{}", ec.trim_start_matches("EC:")), limit)
+}
+
+/// Find the reactions a protein is annotated with, from its UniProtKB accession, e.g. "Q9FLN8".
+pub fn reactions_from_uniprot(
+    accession: &str,
+    limit: Option<u32>,
+) -> Result<Vec<Reaction>, ReqError> {
+    search(&format!("uniprot:{accession}"), limit)
+}
+
+fn ct_file_url(id: u32, ext: &str) -> String {
+    format!("{CT_FILE_URL}/{ext}/{id}.{ext}")
+}
+
+/// Download an MDL RXN file for one direction of a reaction, returning an RXN string. Each `$MOL`
+/// block within is a participant's connection table, in 2D.
+///
+/// Note that these exist for directional variants only, which is why a `Direction` is required:
+/// the MDL CT formats can't express a bidirectional or undefined-direction reaction.
+pub fn load_rxn(master_id: u32, direction: Direction) -> Result<String, ReqError> {
+    get(&ct_file_url(direction.id(master_id), "rxn"))
+}
+
+/// Download an MDL RD (reaction data) file for one direction of a reaction. This is an RXN plus
+/// Rhea's data fields. See `load_rxn` regarding directions.
+pub fn load_rd(master_id: u32, direction: Direction) -> Result<String, ReqError> {
+    get(&ct_file_url(direction.id(master_id), "rd"))
+}
+
+/// The URL of the next page, from UniProt's `Link` header: `<url>; rel="next"`.
+fn parse_next_link(header: &str) -> Option<String> {
+    if !header.contains("rel=\"next\"") {
+        return None;
+    }
+
+    let start = header.find('<')? + 1;
+    let end = header.find('>')?;
+
+    Some(header[start..end].to_owned())
+}
+
+/// Find the proteins annotated with a reaction, as UniProtKB accessions, e.g. "Q9FZN8".
+/// `Reaction::enzyme_count` carries how many there are without a second request; check it before
+/// calling this, as well-studied reactions have thousands.
+///
+/// Rhea stores that count only, so this queries UniProt's REST API, in the manner Rhea's API docs
+/// document. If `reviewed_only` is true, results are limited to UniProtKB/Swiss-Prot. `limit`
+/// caps the number returned; `None` walks every page.
+pub fn uniprot_ids(
+    master_id: u32,
+    reviewed_only: bool,
+    limit: Option<u32>,
+) -> Result<Vec<String>, ReqError> {
+    let mut query = format!("(cc_catalytic_activity:\"rhea:{master_id}\")");
+    if reviewed_only {
+        query += " AND (reviewed:true)";
+    }
+
+    let page_size = limit.unwrap_or(UNIPROT_PAGE_SIZE).min(UNIPROT_PAGE_SIZE);
+
+    let mut params = url::form_urlencoded::Serializer::new(String::new());
+    params.append_pair("query", &query);
+    params.append_pair("fields", "accession");
+    params.append_pair("format", "tsv");
+    params.append_pair("size", &page_size.to_string());
+
+    let mut url = Some(format!("{UNIPROT_URL}?{}", params.finish()));
+    let mut result = Vec::new();
+
+    // UniProt pages via a cursor it hands back in the `Link` header.
+    while let Some(u) = url {
+        let mut resp = request(&u)?;
+
+        if resp.status() != 200 {
+            return Err(ReqError::Http);
+        }
+
+        url = resp
+            .headers()
+            .get("link")
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_next_link);
+
+        let tsv = resp.body_mut().read_to_string()?;
+
+        // The first line is the column header.
+        let accessions: Vec<String> = tsv
+            .lines()
+            .skip(1)
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect();
+
+        // Guard against a `next` link that doesn't advance.
+        if accessions.is_empty() {
+            break;
+        }
+
+        result.extend(accessions);
+
+        if let Some(l) = limit
+            && result.len() >= l as usize
+        {
+            result.truncate(l as usize);
+            break;
+        }
+    }
+
+    Ok(result)
+}

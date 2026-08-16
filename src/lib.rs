@@ -10,6 +10,7 @@ pub mod ncbi;
 pub mod pdbe;
 pub mod pubchem;
 pub mod rcsb;
+pub mod rhea;
 
 // Workraound for not being able to construct ureq's errors.
 #[derive(Debug)]
