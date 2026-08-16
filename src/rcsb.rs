@@ -15,7 +15,7 @@ use bincode::{Decode, Encode};
 use flate2::read::GzDecoder;
 // todo: Determine if you want this.
 use na_seq::{AminoAcid, seq_aa_to_str};
-use rand::{self, Rng};
+use rand::{self, RngExt};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_aux::prelude::*;
 use serde_json::{self};
@@ -57,7 +57,6 @@ pub struct PdbSearchParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pattern: Option<String>,
 }
-// "greater", "exact_match", "in", "range", etc. (todo: enum)
 
 /// https://search.rcsb.org/#return-type
 #[derive(Clone, Copy, Default)]
