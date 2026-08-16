@@ -3,7 +3,10 @@
 //!
 //! This includes specific lookups, and an interface to the general URL-based API.
 
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
 use serde::Deserialize;
 
@@ -536,6 +539,59 @@ pub fn properties(id_type: StructureSearchNamespace, id: &str) -> Result<Propert
         iupac_name: row.iupac_name,
         title: row.title,
     })
+}
+
+/// Deserializing only; one row of a CID -> Title property lookup.
+#[derive(Debug, Deserialize)]
+struct TitleRow {
+    #[serde(rename = "CID")]
+    cid: u32,
+    #[serde(rename = "Title")]
+    title: Option<String>,
+}
+
+/// Deserializing only.
+#[derive(Debug, Deserialize)]
+struct TitleTableInner {
+    #[serde(rename = "Properties")]
+    properties: Vec<TitleRow>,
+}
+
+/// Deserializing only.
+#[derive(Debug, Deserialize)]
+struct TitleTableResp {
+    #[serde(rename = "PropertyTable")]
+    property_table: TitleTableInner,
+}
+
+/// Fetch PubChem compound titles for many CIDs in a single request, keyed by CID. PubChem's
+/// property endpoint accepts a comma-separated list of CIDs, so this collapses what would otherwise
+/// be one request per molecule into one.
+///
+/// The caller should chunk very large lists (a long request URL can be rejected) and rate-limit
+/// between calls. CIDs PubChem has no title for are simply absent from the returned map.
+pub fn titles_for_cids(cids: &[u32]) -> Result<HashMap<u32, String>, ReqError> {
+    if cids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let idents: Vec<String> = cids.iter().map(|c| c.to_string()).collect();
+
+    let data = url_api_query(
+        Domain::Compound,
+        Namespace::Compound(NamespaceCompound::Cid),
+        &idents,
+        OperationSpecification::Compound(OpSpecCompound::Property(vec!["Title".to_string()])),
+    )?;
+
+    let parsed: TitleTableResp = serde_json::from_str(&data)?;
+
+    Ok(parsed
+        .property_table
+        .properties
+        .into_iter()
+        .filter_map(|row| row.title.map(|t| (row.cid, t)))
+        .collect())
 }
 
 pub fn properties_from_pdbe_id(pdb_id: &str) -> Result<Properties, ReqError> {
