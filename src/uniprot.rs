@@ -7,6 +7,9 @@
 //! UniProtKB, which is split into the manually curated Swiss-Prot and the automatically annotated
 //! TrEMBL.
 //!
+//! This is a good option compard to RSCB/PDB when identifying a proteins' function or sequence,
+//! including RHEA interaction. Use RCSB for its 3D structure.
+//!
 //! Identifiers here are UniProtKB accessions, e.g. `P69905`. Functions accept either the bare
 //! accession, or one prefixed with the database name (`UniProtKB:P69905`, case-insensitive).
 //! Isoform suffixes, e.g. `P69905-1`, are preserved.

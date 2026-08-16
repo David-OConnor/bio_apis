@@ -1,7 +1,6 @@
-//! For loading data from the RCSB website's API.
+//! For loading data from the RCSB website's API. This is a good option compared to
+//! UniProt for downloading 3d structure.
 
-//! For opening the browser to NCBI BLAST, PDB etc.
-//!
 //! PDB Search API: https://search.rcsb.org/#search-api
 //! PDB Data API: https://data.rcsb.org/#data-api
 
