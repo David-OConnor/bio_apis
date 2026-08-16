@@ -4,6 +4,8 @@
 //!
 //! ChEBI (Chemical Entities of Biological Interest) is a dictionary of small molecules, hosted
 //! by the EBI.
+//! 
+//! Compared to PubChem, ChEBI is a smaller, more tightly curated database.
 //!
 //! Identifiers here are ChEBI accessions. Functions accept either the prefixed form
 //! (`CHEBI:46195`, case-insensitive) or the bare number (`46195`).

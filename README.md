@@ -18,6 +18,8 @@ data structures for requests and responses, and enums where possible to constrai
 - [UniProt](https://www.uniprot.org/)
 - [ChEBI](https://www.ebi.ac.uk/chebi/)
 - [LMSD](https://www.lipidmaps.org)
+- [BRENDA](https://www.brenda-enzymes.org/) (public SPARQL knowledge graph)
+- [M-CSA](https://www.ebi.ac.uk/thornton-srv/m-csa/) (enzyme mechanisms and catalytic sites)
 - Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules
 
 
@@ -49,6 +51,16 @@ let structures = protein.pdb_ids();
 
 // A predicted structure, for proteins the PDB has no experimental one for.
 let cif_text = uniprot::load_alphafold_cif("P69905").unwrap();
+
+// Build a complete, reviewed enzyme-candidate panel for a Rhea reaction.
+let fields = uniprot::enzyme_candidate_fields();
+let candidates = rhea::proteins(10280, true, true, &fields, Some(50)).unwrap();
+
+// Add active-site residue roles and stepwise mechanism annotations.
+let mechanisms = mcsa::entries_from_uniprot("P56868", Some(10)).unwrap();
+
+// Retrieve BRENDA substrate/product precedents for an enzyme class.
+let precedents = brenda::reaction_participants_from_ec("1.1.1.1", Some(500)).unwrap();
 
 pubchem::open_overview(ident);
 ```

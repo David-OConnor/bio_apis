@@ -88,8 +88,12 @@ pub enum Field {
     CcActivityRegulation,
     CcPathway,
     Kinetics,
+    PhDependence,
+    TemperatureDependence,
+    RedoxPotential,
     FtBinding,
     FtActSite,
+    FtSite,
     Rhea,
     // Misc
     Reviewed,
@@ -110,6 +114,9 @@ pub enum Field {
     FtDisulfid,
     FtModRes,
     FtCarbohyd,
+    FtMutagen,
+    FtVariant,
+    CcBiotechnology,
     // Structure
     Structure3d,
     FtHelix,
@@ -134,6 +141,9 @@ pub enum Field {
     XrefEmbl,
     XrefKegg,
     XrefReactome,
+    XrefBrenda,
+    XrefInterpro,
+    XrefPfam,
     // Dates
     DateModified,
     Version,
@@ -163,8 +173,12 @@ impl Display for Field {
             Self::CcActivityRegulation => "cc_activity_regulation",
             Self::CcPathway => "cc_pathway",
             Self::Kinetics => "kinetics",
+            Self::PhDependence => "ph_dependence",
+            Self::TemperatureDependence => "temp_dependence",
+            Self::RedoxPotential => "redox_potential",
             Self::FtBinding => "ft_binding",
             Self::FtActSite => "ft_act_site",
+            Self::FtSite => "ft_site",
             Self::Rhea => "rhea",
             Self::Reviewed => "reviewed",
             Self::ProteinExistence => "protein_existence",
@@ -180,6 +194,9 @@ impl Display for Field {
             Self::FtDisulfid => "ft_disulfid",
             Self::FtModRes => "ft_mod_res",
             Self::FtCarbohyd => "ft_carbohyd",
+            Self::FtMutagen => "ft_mutagen",
+            Self::FtVariant => "ft_variant",
+            Self::CcBiotechnology => "cc_biotechnology",
             Self::Structure3d => "structure_3d",
             Self::FtHelix => "ft_helix",
             Self::FtStrand => "ft_strand",
@@ -200,6 +217,9 @@ impl Display for Field {
             Self::XrefEmbl => "xref_embl",
             Self::XrefKegg => "xref_kegg",
             Self::XrefReactome => "xref_reactome",
+            Self::XrefBrenda => "xref_brenda",
+            Self::XrefInterpro => "xref_interpro",
+            Self::XrefPfam => "xref_pfam",
             Self::DateModified => "date_modified",
             Self::Version => "version",
             Self::Custom(v) => v.as_str(),
@@ -509,6 +529,14 @@ pub struct FeatureLocation {
     pub end: Position,
 }
 
+/// The residue substitution attached to a natural-variant or mutagenesis feature.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AlternativeSequence {
+    pub original_sequence: Option<String>,
+    pub alternative_sequences: Vec<String>,
+}
+
 /// A small molecule bound by a binding-site feature.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -541,6 +569,8 @@ pub struct Feature {
     pub feature_id: Option<String>,
     /// Present on binding sites.
     pub ligand: Option<Ligand>,
+    /// Present on natural-variant and mutagenesis features.
+    pub alternative_sequence: Option<AlternativeSequence>,
     pub feature_cross_references: Vec<DbReference>,
     pub evidences: Vec<Evidence>,
 }
@@ -755,6 +785,12 @@ pub struct Comment {
     pub interactions: Vec<Interaction>,
     /// "BIOPHYSICOCHEMICAL PROPERTIES".
     pub kinetic_parameters: Option<KineticParameters>,
+    /// "BIOPHYSICOCHEMICAL PROPERTIES"; optimum, activity range, and stability notes.
+    pub ph_dependence: Option<Note>,
+    /// "BIOPHYSICOCHEMICAL PROPERTIES"; optimum, activity range, and thermostability notes.
+    pub temperature_dependence: Option<Note>,
+    /// "BIOPHYSICOCHEMICAL PROPERTIES".
+    pub redox_potential: Option<Note>,
     /// "WEB RESOURCE".
     pub resource_name: Option<String>,
     /// "WEB RESOURCE".
@@ -898,6 +934,37 @@ impl Protein {
         result
     }
 
+    /// Cofactors UniProt explicitly records as required for catalytic activity.
+    pub fn cofactors(&self) -> Vec<&Cofactor> {
+        self.comments
+            .iter()
+            .flat_map(|c| c.cofactors.iter())
+            .collect()
+    }
+
+    fn biophysical_note(&self, select: impl Fn(&Comment) -> Option<&Note>) -> Option<String> {
+        self.comments
+            .iter()
+            .find(|c| c.comment_type == "BIOPHYSICOCHEMICAL PROPERTIES")
+            .and_then(select)
+            .and_then(Note::text)
+            .map(str::to_owned)
+    }
+
+    /// Curated pH optimum, activity range, or stability note, when available.
+    pub fn ph_dependence(&self) -> Option<String> {
+        self.biophysical_note(|c| c.ph_dependence.as_ref())
+    }
+
+    /// Curated temperature optimum, activity range, or thermostability note, when available.
+    pub fn temperature_dependence(&self) -> Option<String> {
+        self.biophysical_note(|c| c.temperature_dependence.as_ref())
+    }
+
+    pub fn redox_potential(&self) -> Option<String> {
+        self.biophysical_note(|c| c.redox_potential.as_ref())
+    }
+
     /// The canonical sequence, as amino acids. Non-standard residues UniProt represents with
     /// `B`, `J`, `X` or `Z` have no single amino acid, and are dropped; compare the result's
     /// length against `Sequence::length` if that matters.
@@ -1002,6 +1069,16 @@ impl Protein {
         self.features.iter().filter(|f| f.type_ == type_).collect()
     }
 
+    /// Experimentally introduced sequence changes and their reported functional effects.
+    pub fn mutagenesis_features(&self) -> Vec<&Feature> {
+        self.features_of_type("Mutagenesis")
+    }
+
+    /// Naturally occurring variants, some of which report effects on catalysis or stability.
+    pub fn natural_variants(&self) -> Vec<&Feature> {
+        self.features_of_type("Natural variant")
+    }
+
     /// Cross references into a given database, e.g. "PDB", "DrugBank", "AlphaFoldDB".
     pub fn xrefs(&self, database: &str) -> Vec<&CrossReference> {
         self.cross_references
@@ -1019,6 +1096,11 @@ impl Protein {
     /// `rcsb::load_cif`. Note that well-studied proteins have hundreds.
     pub fn pdb_ids(&self) -> Vec<String> {
         self.xref_ids("PDB")
+    }
+
+    /// BRENDA records linked directly from this UniProt entry.
+    pub fn brenda_ids(&self) -> Vec<String> {
+        self.xref_ids("BRENDA")
     }
 
     /// As `pdb_ids`, with each structure's method, resolution and chain coverage.
@@ -1404,6 +1486,51 @@ pub fn load_sequence(accession: &str) -> Result<Vec<AminoAcid>, ReqError> {
     Ok(protein.seq_aa())
 }
 
+/// A practical field set for comparing enzyme candidates for expression and engineering.
+///
+/// It includes sequence, reaction/cofactor annotations, kinetic and process-condition notes,
+/// functional mutation records, family classifications, and experimental or predicted structure
+/// links. Pass the result to `search`, `proteins_from_ec`, or `rhea::proteins`.
+pub fn enzyme_candidate_fields() -> Vec<Field> {
+    vec![
+        Field::Accession,
+        Field::Id,
+        Field::ProteinName,
+        Field::GeneNames,
+        Field::OrganismName,
+        Field::OrganismId,
+        Field::Sequence,
+        Field::Length,
+        Field::Ec,
+        Field::CcFunction,
+        Field::CcCatalyticActivity,
+        Field::CcCofactor,
+        Field::CcActivityRegulation,
+        Field::CcPathway,
+        Field::Kinetics,
+        Field::PhDependence,
+        Field::TemperatureDependence,
+        Field::RedoxPotential,
+        Field::FtBinding,
+        Field::FtActSite,
+        Field::FtSite,
+        Field::FtMutagen,
+        Field::FtVariant,
+        Field::CcBiotechnology,
+        Field::Rhea,
+        Field::Reviewed,
+        Field::ProteinExistence,
+        Field::AnnotationScore,
+        Field::CcSubunit,
+        Field::CcSubcellularLocation,
+        Field::XrefPdb,
+        Field::XrefAlphaFoldDb,
+        Field::XrefBrenda,
+        Field::XrefInterpro,
+        Field::XrefPfam,
+    ]
+}
+
 /// Search for proteins. See `query_search` for the query syntax, and for what an empty `fields`
 /// list costs. `limit` caps the number returned; `None` walks every page, which is rarely what you
 /// want — check `count` first.
@@ -1508,6 +1635,63 @@ fn query_reviewed(query: &str, reviewed_only: bool) -> String {
     }
 }
 
+fn query_enzyme_candidates(query: &str, reviewed_only: bool, exclude_fragments: bool) -> String {
+    let mut result = query_reviewed(query, reviewed_only);
+    if exclude_fragments {
+        result = format!("({result}) AND fragment:false");
+    }
+    result
+}
+
+/// Find proteins assigned to an enzyme class. Partial EC numbers such as "2.1.1.-" are accepted
+/// by UniProt.
+pub fn proteins_from_ec(
+    ec: &str,
+    reviewed_only: bool,
+    exclude_fragments: bool,
+    fields: &[Field],
+    limit: Option<u32>,
+) -> Result<Vec<Protein>, ReqError> {
+    let query = format!("ec:{}", ec.trim().trim_start_matches("EC:"));
+    search(
+        &query_enzyme_candidates(&query, reviewed_only, exclude_fragments),
+        fields,
+        limit,
+    )
+}
+
+/// Find proteins whose curated catalytic-activity reactions mention a ChEBI compound.
+pub fn proteins_from_chebi(
+    chebi_id: u32,
+    reviewed_only: bool,
+    exclude_fragments: bool,
+    fields: &[Field],
+    limit: Option<u32>,
+) -> Result<Vec<Protein>, ReqError> {
+    let query = format!("(cc_catalytic_activity:\"CHEBI:{chebi_id}\")");
+    search(
+        &query_enzyme_candidates(&query, reviewed_only, exclude_fragments),
+        fields,
+        limit,
+    )
+}
+
+/// Find proteins with a curated requirement for a ChEBI cofactor.
+pub fn proteins_with_cofactor(
+    chebi_id: u32,
+    reviewed_only: bool,
+    exclude_fragments: bool,
+    fields: &[Field],
+    limit: Option<u32>,
+) -> Result<Vec<Protein>, ReqError> {
+    let query = format!("(cc_cofactor:\"CHEBI:{chebi_id}\")");
+    search(
+        &query_enzyme_candidates(&query, reviewed_only, exclude_fragments),
+        fields,
+        limit,
+    )
+}
+
 /// Find the proteins coded for by a gene, e.g. "HBA1". Passing a `taxon_id`, e.g. 9606 for human,
 /// narrows this to one organism; without it, you get the gene's orthologs across all of them.
 pub fn proteins_from_gene(
@@ -1548,9 +1732,26 @@ pub fn proteins_from_rhea(
     fields: &[Field],
     limit: Option<u32>,
 ) -> Result<Vec<Protein>, ReqError> {
+    proteins_from_rhea_filtered(master_id, reviewed_only, false, fields, limit)
+}
+
+/// As `proteins_from_rhea`, optionally excluding entries annotated as sequence fragments. Rhea's
+/// own integration guide recommends excluding fragments when collecting complete enzyme
+/// sequences.
+pub fn proteins_from_rhea_filtered(
+    master_id: u32,
+    reviewed_only: bool,
+    exclude_fragments: bool,
+    fields: &[Field],
+    limit: Option<u32>,
+) -> Result<Vec<Protein>, ReqError> {
     let query = format!("(cc_catalytic_activity:\"rhea:{master_id}\")");
 
-    search(&query_reviewed(&query, reviewed_only), fields, limit)
+    search(
+        &query_enzyme_candidates(&query, reviewed_only, exclude_fragments),
+        fields,
+        limit,
+    )
 }
 
 /// Deserializing only; the status endpoint answers with a job state until the job finishes, then

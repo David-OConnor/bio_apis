@@ -22,6 +22,10 @@ const BASE_URL: &str = "https://www.rhea-db.org";
 /// Rhea's official distribution site; see https://www.rhea-db.org/help/download.
 const CT_FILE_URL: &str = "https://ftp.expasy.org/databases/rhea/ctfiles";
 
+/// Beta reaction-SMILES distribution described by Rhea's download documentation.
+const REACTION_SMILES_URL: &str =
+    "https://ftp.expasy.org/databases/rhea/tsv/rhea-reaction-smiles.tsv";
+
 const UNIPROT_URL: &str = "https://rest.uniprot.org/uniprotkb/search";
 
 /// UniProt's per-page maximum on its search endpoint.
@@ -106,6 +110,36 @@ const REACTION_COLUMNS: [Column; 13] = [
 pub enum Direction {
     LeftToRight,
     RightToLeft,
+}
+
+/// All four identifiers Rhea assigns to one chemistry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct ReactionIds {
+    pub master: u32,
+    pub left_to_right: u32,
+    pub right_to_left: u32,
+    pub bidirectional: u32,
+}
+
+impl ReactionIds {
+    pub const fn new(master: u32) -> Self {
+        Self {
+            master,
+            left_to_right: master + 1,
+            right_to_left: master + 2,
+            bidirectional: master + 3,
+        }
+    }
+}
+
+/// RDKit reaction SMILES for the two directed forms that Rhea distributes.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct ReactionSmiles {
+    pub master_id: u32,
+    pub left_to_right: Option<String>,
+    pub right_to_left: Option<String>,
 }
 
 impl Direction {
@@ -321,6 +355,29 @@ pub fn reactions_from_chebi(chebi_id: u32, limit: Option<u32>) -> Result<Vec<Rea
     search(&format!("chebi:{chebi_id}"), limit)
 }
 
+/// Find reactions containing exactly this ChEBI entity, without expanding through ChEBI's class
+/// and relationship hierarchy.
+pub fn reactions_from_chebi_exact(
+    chebi_id: u32,
+    limit: Option<u32>,
+) -> Result<Vec<Reaction>, ReqError> {
+    search(&format!("chebi_exact:{chebi_id}"), limit)
+}
+
+/// Find reactions containing a compound by a full or partial InChIKey.
+pub fn reactions_from_inchikey(
+    inchikey: &str,
+    limit: Option<u32>,
+) -> Result<Vec<Reaction>, ReqError> {
+    search(
+        &format!(
+            "inchikey:{}",
+            inchikey.trim().trim_start_matches("InChIKey=")
+        ),
+        limit,
+    )
+}
+
 /// Find the reactions catalysed by an enzyme class, e.g. "2.1.1.160". A partial EC number, e.g.
 /// "2.1.1.-", also works.
 pub fn reactions_from_ec(ec: &str, limit: Option<u32>) -> Result<Vec<Reaction>, ReqError> {
@@ -333,6 +390,25 @@ pub fn reactions_from_uniprot(
     limit: Option<u32>,
 ) -> Result<Vec<Reaction>, ReqError> {
     search(&format!("uniprot:{accession}"), limit)
+}
+
+/// Find Rhea reactions linked to an M-CSA/MACiE mechanism identifier, e.g. "M0283".
+pub fn reactions_from_mcsa(mcsa_id: &str, limit: Option<u32>) -> Result<Vec<Reaction>, ReqError> {
+    search(
+        &format!("macie:{}", mcsa_id.trim().trim_start_matches("M-CSA:")),
+        limit,
+    )
+}
+
+/// Search only approved reactions, which Rhea has checked for mass and charge balance.
+pub fn approved_reactions(query: &str, limit: Option<u32>) -> Result<Vec<Reaction>, ReqError> {
+    let query = query.trim();
+    let query = if query.is_empty() {
+        "status:approved".to_owned()
+    } else {
+        format!("({query}) AND status:approved")
+    };
+    search(&query, limit)
 }
 
 fn ct_file_url(id: u32, ext: &str) -> String {
@@ -352,6 +428,66 @@ pub fn load_rxn(master_id: u32, direction: Direction) -> Result<String, ReqError
 /// Rhea's data fields. See `load_rxn` regarding directions.
 pub fn load_rd(master_id: u32, direction: Direction) -> Result<String, ReqError> {
     get(&ct_file_url(direction.id(master_id), "rd"))
+}
+
+/// Parse Rhea's bulk reaction-SMILES TSV and retain one master reaction.
+///
+/// The file has no header. Its first column is a left-to-right or right-to-left directional Rhea
+/// id; its second is reaction SMILES. Rows for unrelated reactions are ignored.
+pub fn parse_reaction_smiles(tsv: &str, master_id: u32) -> Result<ReactionSmiles, ReqError> {
+    let ids = ReactionIds::new(master_id);
+    let mut result = ReactionSmiles {
+        master_id,
+        ..Default::default()
+    };
+
+    for line in tsv.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let Some((id, smiles)) = line.split_once('\t') else {
+            return Err(ReqError::Deserialize);
+        };
+        let id: u32 = id.parse().map_err(|_| ReqError::Deserialize)?;
+        if id == ids.left_to_right {
+            result.left_to_right = Some(smiles.to_owned());
+        } else if id == ids.right_to_left {
+            result.right_to_left = Some(smiles.to_owned());
+        }
+
+        if result.left_to_right.is_some() && result.right_to_left.is_some() {
+            break;
+        }
+    }
+
+    if result.left_to_right.is_none() && result.right_to_left.is_none() {
+        return Err(ReqError::Deserialize);
+    }
+    Ok(result)
+}
+
+/// Download Rhea's beta reaction-SMILES table and return the two directed representations for one
+/// master reaction. For repeated or bulk use, download the table once and call
+/// `parse_reaction_smiles` for each reaction.
+pub fn load_reaction_smiles(master_id: u32) -> Result<ReactionSmiles, ReqError> {
+    parse_reaction_smiles(&get(REACTION_SMILES_URL)?, master_id)
+}
+
+/// Load full UniProt records for proteins annotated as catalysing a reaction.
+///
+/// This is the richer counterpart of `uniprot_ids`, and keeps Rhea and UniProt's query behavior in
+/// one place. `exclude_fragments` is useful when building an enzyme-expression candidate panel.
+pub fn proteins(
+    master_id: u32,
+    reviewed_only: bool,
+    exclude_fragments: bool,
+    fields: &[crate::uniprot::Field],
+    limit: Option<u32>,
+) -> Result<Vec<crate::uniprot::Protein>, ReqError> {
+    crate::uniprot::proteins_from_rhea_filtered(
+        master_id,
+        reviewed_only,
+        exclude_fragments,
+        fields,
+        limit,
+    )
 }
 
 /// The URL of the next page, from UniProt's `Link` header: `<url>; rel="next"`.
@@ -435,4 +571,18 @@ pub fn uniprot_ids(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_directed_reaction_smiles() {
+        let tsv = "10001\tA>>B\n10002\tB>>A\n10005\tC>>D\n";
+        let result = parse_reaction_smiles(tsv, 10000).unwrap();
+        assert_eq!(result.left_to_right.as_deref(), Some("A>>B"));
+        assert_eq!(result.right_to_left.as_deref(), Some("B>>A"));
+        assert_eq!(ReactionIds::new(10000).bidirectional, 10003);
+    }
 }

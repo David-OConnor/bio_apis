@@ -2,6 +2,8 @@
 //! [API docs](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
 //!
 //! This includes specific lookups, and an interface to the general URL-based API.
+//!
+//! //! Compared to ChEBI, PubChem is a larger, less-curated database.
 
 use std::{
     collections::HashMap,
