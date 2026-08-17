@@ -12,11 +12,13 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::{ReqError, make_agent};
+use crate::{ReqError, chebi, make_agent};
 
 const BASE_COMPOUND_URL: &str = "https://pubchem.ncbi.nlm.nih.gov/compound";
 
 const BASE_PUG_URL: &str = "https://pubchem.ncbi.nlm.nih.gov/rest/pug";
+
+const BASE_PUG_VIEW_URL: &str = "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data";
 
 const PROTEIN_LOOKUP_URL: &str =
     "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/structure/compound";
@@ -594,6 +596,100 @@ pub fn titles_for_cids(cids: &[u32]) -> Result<HashMap<u32, String>, ReqError> {
         .into_iter()
         .filter_map(|row| row.title.map(|t| (row.cid, t)))
         .collect())
+}
+
+/// Deserializing only; PUG-View nests sections to a depth that varies by heading, so this is
+/// recursive. `Record` itself deserializes as a section itself, as it carries the outermost
+/// `Section` list.
+#[derive(Debug, Deserialize)]
+struct PugViewSection {
+    #[serde(rename = "Section", default)]
+    sections: Vec<PugViewSection>,
+    #[serde(rename = "Information", default)]
+    information: Vec<PugViewInfo>,
+}
+
+impl PugViewSection {
+    /// The first information string anywhere in this subtree. Requests are filtered by heading, so
+    /// any value present is one we asked for.
+    fn first_value(&self) -> Option<&str> {
+        for info in &self.information {
+            if let Some(s) = info.value.strings.first() {
+                return Some(&s.value);
+            }
+        }
+
+        self.sections.iter().find_map(|s| s.first_value())
+    }
+}
+
+/// Deserializing only.
+#[derive(Debug, Deserialize)]
+struct PugViewInfo {
+    #[serde(rename = "Value")]
+    value: PugViewValue,
+}
+
+/// Deserializing only.
+#[derive(Debug, Deserialize)]
+struct PugViewValue {
+    #[serde(rename = "StringWithMarkup", default)]
+    strings: Vec<PugViewString>,
+}
+
+/// Deserializing only.
+#[derive(Debug, Deserialize)]
+struct PugViewString {
+    #[serde(rename = "String")]
+    value: String,
+}
+
+/// Deserializing only.
+#[derive(Debug, Deserialize)]
+struct PugViewResp {
+    #[serde(rename = "Record")]
+    record: PugViewSection,
+}
+
+/// Find the ChEBI id of a compound from its PubChem CID, e.g. 2519 (caffeine) -> 27732.
+///
+/// ChEBI records don't cross-reference PubChem, so PubChem is the only side carrying this link; it
+/// has it because ChEBI deposits its entries into PubChem. We use PUG-View's `ChEBI ID` heading,
+/// which serves the single curated accession in a small response. (The `synonyms` and
+/// `xrefs/RegistryID` operations also expose it, but synonyms is ambiguous — CID 5793 lists three
+/// ChEBI ids, unranked — and xrefs buries it in thousands of unrelated registry ids.)
+///
+/// Returns `Ok(None)` if PubChem has no ChEBI id for the compound; this also covers a CID that
+/// doesn't exist, as PubChem answers both with a 404. For compounds ChEBI hasn't deposited, fall
+/// back to a structure lookup: pass this compound's InChI key to `chebi::search`, or its SMILES to
+/// `chebi::structure_search`.
+///
+/// Note that PubChem rate limits to 5 requests/second, so mapping many compounds this way needs
+/// throttling.
+pub fn chebi_id_from_cid(cid: u32) -> Result<Option<u32>, ReqError> {
+    let agent = make_agent();
+    let url = format!("{BASE_PUG_VIEW_URL}/compound/{cid}/JSON?heading=ChEBI+ID");
+
+    // Our agent doesn't treat error status codes as errors, and PUG-View returns a JSON body on
+    // failure, e.g. `{"Fault": {"Code": "PUGVIEW.NotFound", ...}}`. Catch that here, so we don't
+    // try to parse a failure message as data.
+    let mut resp = agent.get(url).call()?;
+
+    if resp.status() == 404 {
+        return Ok(None);
+    }
+
+    if resp.status() != 200 {
+        return Err(ReqError::Http);
+    }
+
+    let parsed: PugViewResp = serde_json::from_str(&resp.body_mut().read_to_string()?)?;
+
+    match parsed.record.first_value() {
+        // The prefixed form, e.g. "CHEBI:27732".
+        Some(v) => Ok(Some(chebi::parse_id(v)?)),
+        None => Ok(None),
+    }
 }
 
 pub fn properties_from_pdbe_id(pdb_id: &str) -> Result<Properties, ReqError> {

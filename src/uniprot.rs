@@ -594,6 +594,30 @@ pub struct Reaction {
     pub ec_number: Option<String>,
 }
 
+/// A direction in which UniProt annotates a reaction as operating physiologically.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct PhysiologicalReaction {
+    /// E.g. "left-to-right".
+    pub direction_type: String,
+    /// The correspondingly directed Rhea identifier.
+    pub reaction_cross_reference: Option<DbReference>,
+    pub evidences: Vec<Evidence>,
+}
+
+impl PhysiologicalReaction {
+    pub fn rhea_id(&self) -> Option<u32> {
+        let reference = self.reaction_cross_reference.as_ref()?;
+        (reference.database == "Rhea")
+            .then(|| reference.id_bare().parse().ok())
+            .flatten()
+    }
+
+    pub fn direction(&self) -> Option<crate::rhea::ReactionDirection> {
+        crate::rhea::ReactionDirection::from_name(&self.direction_type)
+    }
+}
+
 impl Reaction {
     /// The numeric portion of this reaction's Rhea master id, e.g. 10736. Pass this to
     /// `rhea::load_reaction`.
@@ -771,6 +795,8 @@ pub struct Comment {
     pub note: Option<Note>,
     /// "CATALYTIC ACTIVITY".
     pub reaction: Option<Reaction>,
+    /// Experimentally supported physiological directions for a catalytic activity.
+    pub physiological_reactions: Vec<PhysiologicalReaction>,
     /// "COFACTOR".
     pub cofactors: Vec<Cofactor>,
     /// "SUBCELLULAR LOCATION".
@@ -1010,6 +1036,33 @@ impl Protein {
             .iter()
             .filter_map(|r| r.rhea_id())
             .collect()
+    }
+
+    /// Distinct physiological directions annotated for one Rhea master reaction.
+    pub fn physiological_directions_for_rhea(
+        &self,
+        master_id: u32,
+    ) -> Vec<crate::rhea::ReactionDirection> {
+        let quartet = crate::rhea::ReactionIds::new(master_id);
+        let mut result = Vec::new();
+
+        for physiological in self
+            .comments
+            .iter()
+            .flat_map(|comment| &comment.physiological_reactions)
+        {
+            let Some(id) = physiological.rhea_id() else {
+                continue;
+            };
+            let Some(direction) = quartet.direction_for_id(id) else {
+                continue;
+            };
+            if !result.contains(&direction) {
+                result.push(direction);
+            }
+        }
+
+        result
     }
 
     /// Every ChEBI entity this entry references: bound ligands, cofactors, and the participants of
@@ -1929,4 +1982,32 @@ pub fn load_alphafold_cif(accession: &str) -> Result<String, ReqError> {
 /// regarding fragments and the B-factor column.
 pub fn load_alphafold_pdb(accession: &str) -> Result<String, ReqError> {
     get(&alphafold_file_url(accession, true)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_physiological_rhea_direction() {
+        let json = r#"{
+            "primaryAccession": "D7REY4",
+            "comments": [{
+                "commentType": "CATALYTIC ACTIVITY",
+                "physiologicalReactions": [{
+                    "directionType": "left-to-right",
+                    "reactionCrossReference": {
+                        "database": "Rhea",
+                        "id": "RHEA:27903"
+                    }
+                }]
+            }]
+        }"#;
+
+        let protein: Protein = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            protein.physiological_directions_for_rhea(27902),
+            [crate::rhea::ReactionDirection::LeftToRight]
+        );
+    }
 }

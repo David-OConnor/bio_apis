@@ -106,10 +106,38 @@ const REACTION_COLUMNS: [Column; 13] = [
 /// Rhea assigns each reaction four consecutive identifiers: the master (undirected) reaction,
 /// then its left-to-right, right-to-left, and bidirectional variants. Searches index the master
 /// only, while MDL CT files exist for the two directional variants only; this picks between them.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Direction {
     LeftToRight,
     RightToLeft,
+}
+
+/// The direction attached to a member of a Rhea reaction quartet.
+///
+/// Unlike [`Direction`], which selects one of the two connection-table files Rhea distributes,
+/// this includes the undefined master reaction and the bidirectional (equilibrium) variant used
+/// by database annotations.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub enum ReactionDirection {
+    #[default]
+    Undefined,
+    LeftToRight,
+    RightToLeft,
+    Bidirectional,
+}
+
+impl ReactionDirection {
+    /// Parse the names used by UniProt's `physiologicalReactions.directionType` field.
+    pub fn from_name(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "undefined" => Some(Self::Undefined),
+            "left-to-right" => Some(Self::LeftToRight),
+            "right-to-left" => Some(Self::RightToLeft),
+            "bidirectional" => Some(Self::Bidirectional),
+            _ => None,
+        }
+    }
 }
 
 /// All four identifiers Rhea assigns to one chemistry.
@@ -129,6 +157,21 @@ impl ReactionIds {
             left_to_right: master + 1,
             right_to_left: master + 2,
             bidirectional: master + 3,
+        }
+    }
+
+    /// Classify one identifier from this quartet.
+    pub const fn direction_for_id(&self, id: u32) -> Option<ReactionDirection> {
+        if id == self.master {
+            Some(ReactionDirection::Undefined)
+        } else if id == self.left_to_right {
+            Some(ReactionDirection::LeftToRight)
+        } else if id == self.right_to_left {
+            Some(ReactionDirection::RightToLeft)
+        } else if id == self.bidirectional {
+            Some(ReactionDirection::Bidirectional)
+        } else {
+            None
         }
     }
 }
@@ -162,6 +205,16 @@ pub struct GoTerm {
     pub label: String,
 }
 
+/// The participants on one side of a Rhea equation.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct ReactionSide {
+    pub participant_names: Vec<String>,
+    /// ChEBI identifiers only. A side may also contain a generic `RHEA-COMP` participant, which
+    /// is retained in the combined participant fields on [`Reaction`] but has no ChEBI id here.
+    pub participant_chebi_ids: Vec<u32>,
+}
+
 /// A Rhea reaction. Identifiers here are stored without their database prefixes.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
@@ -174,6 +227,10 @@ pub struct Reaction {
     pub participant_names: Vec<String>,
     /// ChEBI ids of the participants, e.g. 27732. Pass these to `chebi::load_compound`.
     pub participant_chebi_ids: Vec<u32>,
+    /// Participants to the left of the equation symbol, in equation order.
+    pub reactants: ReactionSide,
+    /// Participants to the right of the equation symbol, in equation order.
+    pub products: ReactionSide,
     /// E.g. "1.17.5.2".
     pub ec_numbers: Vec<String>,
     /// How many UniProtKB entries are annotated with this reaction. See `uniprot_ids` for the
@@ -189,6 +246,43 @@ pub struct Reaction {
     pub reactome: Vec<String>,
     /// Mechanism and Catalytic Site Atlas.
     pub m_csa: Vec<String>,
+}
+
+impl Reaction {
+    /// Numeric M-CSA entry identifiers linked directly from this Rhea reaction.
+    ///
+    /// Rhea serializes these cross-references as values such as `M0283`, whereas the M-CSA API
+    /// accepts the numeric portion. Keeping the conversion here avoids every downstream caller
+    /// having to know both databases' identifier conventions.
+    pub fn mcsa_ids(&self) -> Vec<u32> {
+        self.m_csa
+            .iter()
+            .filter_map(|id| {
+                id.trim()
+                    .trim_start_matches("M-CSA:")
+                    .trim_start_matches('M')
+                    .parse()
+                    .ok()
+            })
+            .collect()
+    }
+
+    /// Load M-CSA mechanism entries for this reaction.
+    ///
+    /// A direct Rhea/M-CSA cross-reference is preferred. Older or less completely cross-linked
+    /// Rhea records fall back to their EC numbers, which is broader and should therefore be
+    /// treated as family-level evidence rather than proof of an identical reaction.
+    pub fn mcsa_entries(
+        &self,
+        fallback_limit: Option<u32>,
+    ) -> Result<Vec<crate::mcsa::Entry>, ReqError> {
+        let ids = self.mcsa_ids();
+        if ids.is_empty() {
+            crate::mcsa::entries_from_ec(&self.ec_numbers, fallback_limit)
+        } else {
+            crate::mcsa::entries_from_ids(&ids)
+        }
+    }
 }
 
 impl Reaction {
@@ -219,6 +313,35 @@ fn split_col_num(field: &str, prefix: &str) -> Vec<u32> {
         .collect()
 }
 
+fn reaction_sides(
+    equation: &str,
+    participant_names: &[String],
+    participant_identifiers: &[String],
+) -> Result<(ReactionSide, ReactionSide), ReqError> {
+    let (left, _) = equation.split_once(" = ").ok_or(ReqError::Deserialize)?;
+    let left_count = left.split(" + ").count();
+
+    if participant_names.len() != participant_identifiers.len()
+        || left_count > participant_names.len()
+    {
+        return Err(ReqError::Deserialize);
+    }
+
+    let side = |range: std::ops::Range<usize>| ReactionSide {
+        participant_names: participant_names[range.clone()].to_vec(),
+        participant_chebi_ids: participant_identifiers[range]
+            .iter()
+            .filter_map(|id| id.strip_prefix("CHEBI:"))
+            .filter_map(|id| id.parse().ok())
+            .collect(),
+    };
+
+    Ok((
+        side(0..left_count),
+        side(left_count..participant_names.len()),
+    ))
+}
+
 /// Parse the TSV table returned for `REACTION_COLUMNS`.
 fn parse_reactions(tsv: &str) -> Result<Vec<Reaction>, ReqError> {
     let mut result = Vec::new();
@@ -245,11 +368,19 @@ fn parse_reactions(tsv: &str) -> Result<Vec<Reaction>, ReqError> {
             label: label.to_owned(),
         });
 
+        let equation = cols[1].trim().to_owned();
+        let participant_names = split_col(cols[2], "");
+        let participant_identifiers = split_col(cols[3], "");
+        let (reactants, products) =
+            reaction_sides(&equation, &participant_names, &participant_identifiers)?;
+
         result.push(Reaction {
             id,
-            equation: cols[1].trim().to_owned(),
-            participant_names: split_col(cols[2], ""),
+            equation,
+            participant_names,
             participant_chebi_ids: split_col_num(cols[3], "CHEBI:"),
+            reactants,
+            products,
             ec_numbers: split_col(cols[4], "EC:"),
             enzyme_count: cols[5].trim().parse().unwrap_or_default(),
             go,
@@ -584,5 +715,55 @@ mod tests {
         assert_eq!(result.left_to_right.as_deref(), Some("A>>B"));
         assert_eq!(result.right_to_left.as_deref(), Some("B>>A"));
         assert_eq!(ReactionIds::new(10000).bidirectional, 10003);
+    }
+
+    #[test]
+    fn parses_reaction_participants_by_side() {
+        let tsv = concat!(
+            "Reaction identifier\tEquation\tChEBI name\tChEBI identifier\tEC number\tEnzymes\tGO molecular function\tPubMed\tKEGG\tMetaCyc\tEcoCyc\tReactome\tM-CSA\n",
+            "RHEA:27902\tubiquinone-0 + caffeine + H2O = ubiquinol-0 + 1,3,7-trimethylurate\t",
+            "ubiquinone-0;caffeine;water;ubiquinol-0;1,3,7-trimethyluric acid\t",
+            "CHEBI:27906;CHEBI:27732;CHEBI:15377;CHEBI:60899;CHEBI:691622\t",
+            "EC:1.17.5.2\t3\t\t17981969\t\t\t\t\t\n",
+        );
+
+        let reaction = parse_reactions(tsv).unwrap().remove(0);
+        assert_eq!(
+            reaction.reactants.participant_chebi_ids,
+            [27906, 27732, 15377]
+        );
+        assert_eq!(reaction.products.participant_chebi_ids, [60899, 691622]);
+        assert_eq!(reaction.participant_chebi_ids.len(), 5);
+    }
+
+    #[test]
+    fn classifies_all_quartet_directions() {
+        let ids = ReactionIds::new(27902);
+        assert_eq!(
+            ids.direction_for_id(27902),
+            Some(ReactionDirection::Undefined)
+        );
+        assert_eq!(
+            ids.direction_for_id(27903),
+            Some(ReactionDirection::LeftToRight)
+        );
+        assert_eq!(
+            ids.direction_for_id(27904),
+            Some(ReactionDirection::RightToLeft)
+        );
+        assert_eq!(
+            ids.direction_for_id(27905),
+            Some(ReactionDirection::Bidirectional)
+        );
+        assert_eq!(ids.direction_for_id(12345), None);
+    }
+
+    #[test]
+    fn normalizes_mcsa_cross_references() {
+        let reaction = Reaction {
+            m_csa: vec!["M0283".to_owned(), "M-CSA:M0042".to_owned()],
+            ..Default::default()
+        };
+        assert_eq!(reaction.mcsa_ids(), [283, 42]);
     }
 }

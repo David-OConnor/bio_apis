@@ -4,7 +4,7 @@
 //!
 //! BRENDA curates enzyme reactions, substrate scope, organisms, cofactors, inhibitors, kinetics,
 //! stability, process conditions, and engineered variants. This module uses its public DSMZ
-//! Digital Diversity knowledge graph. The graph is currently labelled a prototype and exposes a
+//! Digital Diversity knowledge graph. The graph is currently labeled a prototype and exposes a
 //! smaller surface than the credentialed SOAP service, but it has a standards-based JSON API and
 //! is the appropriate unauthenticated integration point.
 //!
@@ -117,6 +117,19 @@ pub struct Effector {
     pub inchikey: Option<String>,
 }
 
+/// The subset of BRENDA evidence most useful while ranking a proposed synthesis step.
+///
+/// This intentionally combines the EC name, recorded reaction participants, and cofactors in one
+/// SPARQL request. Route searches may inspect many EC classes, so making three independent network
+/// requests per class is unnecessarily slow and puts avoidable load on the public endpoint.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SynthesisEvidence {
+    pub ec_number: String,
+    pub recommended_name: String,
+    pub reaction_participants: Vec<ReactionParticipant>,
+    pub cofactors: Vec<Effector>,
+}
+
 fn binding_value<'a>(binding: &'a HashMap<String, SparqlValue>, key: &str) -> Option<&'a str> {
     binding.get(key).map(|v| v.value.as_str())
 }
@@ -211,6 +224,93 @@ SELECT ?name ?systematicName ?description ?synonym WHERE {{
             result.synonyms.push(value.to_owned());
         }
     }
+    Ok(result)
+}
+
+/// Load reaction-scope and cofactor evidence for an EC class in one request.
+///
+/// BRENDA compound identifiers are not ChEBI identifiers. Callers should compare the returned
+/// names or InChIKeys with their route compounds instead of treating `compound_id` as a ChEBI id.
+pub fn synthesis_evidence_from_ec(
+    ec_number: &str,
+    limit: Option<u32>,
+) -> Result<SynthesisEvidence, ReqError> {
+    let ec = ec_bare(ec_number)?;
+    let limit = limit.unwrap_or(500);
+    let query = format!(
+        r#"PREFIX d3o: <{D3O_IRI}>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT DISTINCT ?name ?reaction ?roleType ?compound ?compoundName ?inchiKey WHERE {{
+  VALUES ?ec {{ <{BRENDA_IRI}/ec/{ec}> }}
+  ?ec a d3o:ECNumber ; rdfs:label ?name .
+  {{
+    ?reaction a d3o:Reaction ; d3o:catalyzedByClass ?ec .
+    ?role d3o:partOf ?reaction ; d3o:refersToCompound ?compound ; a ?roleType .
+    VALUES ?roleType {{ d3o:Substrate d3o:Product }}
+  }} UNION {{
+    ?effect a d3o:Cofactor ; d3o:isCofactorOf ?protein ; d3o:refersToCompound ?compound .
+    ?protein d3o:isClassifiedAs ?ec .
+    BIND(d3o:Cofactor AS ?roleType)
+  }}
+  ?compound rdfs:label ?compoundName .
+  OPTIONAL {{
+    ?compound d3o:hasStructure ?structure .
+    ?structure d3o:hasInChIKey ?inchiKey .
+  }}
+}} LIMIT {limit}"#
+    );
+
+    let rows = query_sparql(&query)?.results.bindings;
+    let first = rows.first().ok_or(ReqError::Deserialize)?;
+    let mut result = SynthesisEvidence {
+        ec_number: ec,
+        recommended_name: binding_value(first, "name").unwrap_or_default().to_owned(),
+        ..Default::default()
+    };
+
+    for row in rows {
+        let role_iri = binding_value(&row, "roleType").ok_or(ReqError::Deserialize)?;
+        let compound = binding_value(&row, "compound").ok_or(ReqError::Deserialize)?;
+        let compound_id = id_from_iri(compound);
+        let name = binding_value(&row, "compoundName")
+            .unwrap_or_default()
+            .to_owned();
+        let inchikey = binding_value(&row, "inchiKey").and_then(inchikey_bare);
+
+        if role_iri.ends_with("/Cofactor") {
+            let candidate = Effector {
+                role: EffectorRole::Cofactor,
+                compound_id,
+                name,
+                inchikey,
+            };
+            if !result.cofactors.contains(&candidate) {
+                result.cofactors.push(candidate);
+            }
+            continue;
+        }
+
+        let role = if role_iri.ends_with("/Substrate") {
+            ParticipantRole::Substrate
+        } else if role_iri.ends_with("/Product") {
+            ParticipantRole::Product
+        } else {
+            return Err(ReqError::Deserialize);
+        };
+        let candidate = ReactionParticipant {
+            reaction: binding_value(&row, "reaction")
+                .ok_or(ReqError::Deserialize)?
+                .to_owned(),
+            role,
+            compound_id,
+            name,
+            inchikey,
+        };
+        if !result.reaction_participants.contains(&candidate) {
+            result.reaction_participants.push(candidate);
+        }
+    }
+
     Ok(result)
 }
 
@@ -337,5 +437,13 @@ mod tests {
             Some("BAWFJGJZGIEFAR-NNYOXOHSSA-O")
         );
         assert_eq!(inchikey_bare(""), None);
+    }
+
+    #[test]
+    fn loads_synthesis_evidence_for_an_ec_class() {
+        let evidence = synthesis_evidence_from_ec("1.17.5.2", Some(100)).unwrap();
+        assert_eq!(evidence.ec_number, "1.17.5.2");
+        assert!(!evidence.recommended_name.is_empty());
+        assert!(!evidence.reaction_participants.is_empty() || !evidence.cofactors.is_empty());
     }
 }
