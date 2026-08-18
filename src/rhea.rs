@@ -285,6 +285,11 @@ impl Reaction {
             crate::mcsa::entries_from_ids(&ids)
         }
     }
+
+    /// Format the useful part of a Rhea reaction without dumping the whole record.
+    pub fn format_simple(&self) -> String {
+        format!("{}: {}", self.accession(), self.equation)
+    }
 }
 
 impl Reaction {
