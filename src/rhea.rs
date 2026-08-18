@@ -15,6 +15,8 @@
 //! www.rhea-db.org, whose per-entry file URLs sit behind a browser challenge that a plain HTTP
 //! client can't clear.
 
+use std::fmt;
+use std::fmt::Display;
 use crate::{ReqError, make_agent};
 
 const BASE_URL: &str = "https://www.rhea-db.org";
@@ -64,8 +66,8 @@ pub enum Column {
     XrefMCsa,
 }
 
-impl std::fmt::Display for Column {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Column {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let v = match self {
             Self::RheaId => "rhea-id",
             Self::Equation => "equation",

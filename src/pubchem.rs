@@ -405,9 +405,9 @@ pub fn load_sdf(id_type: StructureSearchNamespace, id: &str) -> Result<String, R
 /// This seems to work using pdbE/Amber identifiers. Not technically pubchem, but is
 /// from NIH.gov.
 /// todo: Support SELFEIS too; doesn't seem to be available.
-pub fn get_smiles_chem_name(name: &str) -> Result<String, ReqError> {
+pub fn get_smiles_from_pdbe_id(pdbe_ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
-    let url = format!("https://cactus.nci.nih.gov/chemical/structure/{name}/smiles");
+    let url = format!("https://cactus.nci.nih.gov/chemical/structure/{pdbe_ident}/smiles");
 
     // Make sure to catch the HTTP != 200, and return an error: Otherwise the result will be an OK with
     // brief HTML failure message string.
@@ -515,6 +515,8 @@ struct PropertyTableInner {
 }
 
 /// Get properties from an ID.
+/// See [Compound Property Tables](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest#section=Compound-Property-Tables)
+/// for a list of supported fields. This function chooses a subset.
 pub fn properties(id_type: StructureSearchNamespace, id: &str) -> Result<Properties, ReqError> {
     let agent = make_agent();
     let url = properties_url(id_type, id);
@@ -693,14 +695,14 @@ pub fn chebi_id_from_cid(cid: u32) -> Result<Option<u32>, ReqError> {
 }
 
 pub fn properties_from_pdbe_id(pdb_id: &str) -> Result<Properties, ReqError> {
-    let smiles = get_smiles_chem_name(pdb_id)?;
+    let smiles = get_smiles_from_pdbe_id(pdb_id)?;
     properties(StructureSearchNamespace::Smiles, &smiles)
 }
 
 /// We do this via an intermediate SMILES representation.
 /// Also returns the SMILES, as we load it anyway.
 pub fn get_cid_from_pdbe_id(pdb_id: &str) -> Result<(u32, String), ReqError> {
-    let smiles = get_smiles_chem_name(pdb_id)?;
+    let smiles = get_smiles_from_pdbe_id(pdb_id)?;
     let cids = find_cids_from_search(&smiles, true)?;
 
     Ok((cids[0], smiles))
