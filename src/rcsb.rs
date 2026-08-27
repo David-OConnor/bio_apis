@@ -511,7 +511,7 @@ pub fn load_metadata(ident: &str) -> Result<PdbMetaData, ReqError> {
     let agent = make_agent();
 
     let resp = agent
-        .get(&format!("{DATA_API_URL}/{}", ident))
+        .get(&format!("{DATA_API_URL}/{}", data_api_ident(ident)))
         .call()?
         .body_mut()
         .read_to_string()?;
@@ -521,6 +521,23 @@ pub fn load_metadata(ident: &str) -> Result<PdbMetaData, ReqError> {
     Ok(PdbMetaData {
         prim_cit_title: data.rcsb_primary_citation.title,
     })
+}
+
+/// An identifier in the form the Data API accepts. `data.rcsb.org` is keyed on the 4-character
+/// entry ID and 404s on the 12-character extended one, e.g. `pdb_00004qz8` — unlike
+/// `files.rcsb.org`, which takes either. An extended ID for an entry that has a 4-character
+/// equivalent is that ID zero-padded, so the last 4 characters recover it. Anything else, including
+/// a future entry with no 4-character form, is passed through unchanged.
+fn data_api_ident(ident: &str) -> &str {
+    if ident.len() == 12
+        && ident
+            .get(..8)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("pdb_0000"))
+    {
+        return &ident[8..];
+    }
+
+    ident
 }
 
 fn cif_url(ident: &str) -> String {
@@ -567,7 +584,7 @@ pub fn get_all_data(ident: &str) -> Result<PdbDataResults, ReqError> {
     let agent = make_agent();
 
     let resp = agent
-        .get(&format!("{DATA_API_URL}/{}", ident))
+        .get(&format!("{DATA_API_URL}/{}", data_api_ident(ident)))
         .call()?
         .body_mut()
         .read_to_string()?;
@@ -580,7 +597,7 @@ pub fn map_gz_url(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
     let resp = agent
-        .get(&format!("{DATA_API_URL}/{}", ident))
+        .get(&format!("{DATA_API_URL}/{}", data_api_ident(ident)))
         .call()?
         .body_mut()
         .read_to_string()?;
