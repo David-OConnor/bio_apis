@@ -9,7 +9,7 @@ This library contains abstractions to interact with public biology databases tha
 data structures for requests and responses, and enums where possible to constrain API options.
 
 ## APIs supported
-- [RCSB](https://data.rcsb.org/) (Protein data bank)
+- [RCSB](https://data.rcsb.org/) (Protein data bank), including ligands from its Chemical Component Dictionary (CCD)
 - [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
 - [PDBe](https://www.ebi.ac.uk/pdbe/)
 - [DrugBank](https://docs.drugbank.com/v1/)
@@ -63,6 +63,13 @@ let mechanisms = mcsa::entries_from_uniprot("P56868", Some(10)).unwrap();
 let precedents = brenda::reaction_participants_from_ec("1.1.1.1", Some(500)).unwrap();
 
 pubchem::open_overview(ident);
+
+// Ligands, by Chemical Component Dictionary (CCD) ID, e.g. as used by RFdiffusion3.
+let props = rcsb::ccd_properties("MF8").unwrap(); // Name, SMILES, InChIKey, PubChem CID, ChEBI ID etc.
+let sdf_data = rcsb::load_ccd_sdf("MF8").unwrap();
+let ccd_ids = rcsb::ccd_ids_from_pubchem_cid(2519).unwrap(); // ["CFF"] (caffeine)
+let ccd_ids = rcsb::ccd_ids_from_chebi_id(15422).unwrap(); // ["ATP"]
+let cid = rcsb::pubchem_cid_from_ccd("CFF").unwrap(); // Some(2519)
 ```
 
 We support flexible queries of the [Pubchem URL-based API](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest#section=URL-based-API) using the `pubchem::url_api_query()` function. Parameters

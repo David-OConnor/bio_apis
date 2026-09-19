@@ -45,8 +45,13 @@ impl From<io::Error> for ReqError {
 const HTTP_TIMEOUT: u64 = 5; // In seconds
 
 fn make_agent() -> Agent {
+    make_agent_with_timeout(HTTP_TIMEOUT)
+}
+
+/// For endpoints known to be slower than our default timeout allows, e.g. structure searches.
+fn make_agent_with_timeout(timeout: u64) -> Agent {
     let config = Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(HTTP_TIMEOUT)))
+        .timeout_global(Some(Duration::from_secs(timeout)))
         // Don't cause 404 and similar error HTTP codes to throw errors when making HTTP requests.
         .http_status_as_error(false)
         .build();

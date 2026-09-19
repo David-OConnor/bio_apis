@@ -15,8 +15,8 @@
 //! www.rhea-db.org, whose per-entry file URLs sit behind a browser challenge that a plain HTTP
 //! client can't clear.
 
-use std::fmt;
-use std::fmt::Display;
+use std::{fmt, fmt::Display};
+
 use crate::{ReqError, make_agent};
 
 const BASE_URL: &str = "https://www.rhea-db.org";
