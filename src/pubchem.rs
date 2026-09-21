@@ -386,19 +386,28 @@ pub fn load_associated_structures(cid: u32) -> Result<Vec<ProteinStructure>, Req
 }
 
 /// Note: If id is a u32 CID`, convert to str prior to passing here.
-fn sdf_url(id_type: StructureSearchNamespace, id: &str) -> String {
-    format!("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/{id_type}/{id}/SDF?record_type=3d",)
+/// `record_type` is `"3d"` or `"2d"`.
+fn sdf_url(id_type: StructureSearchNamespace, id: &str, record_type: &str) -> String {
+    format!(
+        "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/{id_type}/{id}/SDF?record_type={record_type}",
+    )
 }
 
-/// Download an SDF file from PubChem, returning an SDF string.
+/// Download an SDF file from PubChem, returning an SDF string. Uses the 3D conformer if available;
+/// falls back to the 2D (Z = 0) record otherwise.
 pub fn load_sdf(id_type: StructureSearchNamespace, id: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
-    Ok(agent
-        .get(sdf_url(id_type, id))
-        .call()?
-        .body_mut()
-        .read_to_string()?)
+    for record_type in ["3d", "2d"] {
+        // Our agent doesn't treat HTTP error codes as errors, so check the status explicitly:
+        // PubChem returns a 404 with a plain-text fault body when e.g. no 3D record exists.
+        let mut resp = agent.get(sdf_url(id_type, id, record_type)).call()?;
+        if resp.status() == 200 {
+            return Ok(resp.body_mut().read_to_string()?);
+        }
+    }
+
+    Err(ReqError::Http)
 }
 
 /// Get the Simplified Molecular Input Line Entry System (SMILES) representation from an identifier.
