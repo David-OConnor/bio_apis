@@ -18,6 +18,9 @@
 //! cross-references. Pass a `Field` list to `load_protein_fields` or `search` to ask for only the
 //! parts you need; `properties` does this for you.
 //!
+//! To get a protein's 3D structure from its accession, use `best_pdb_ids`, then `rcsb::load_cif`,
+//! falling back to `load_alphafold_cif` for proteins with no experimental structure.
+//!
 //! Bridges to the other modules in this crate: `Protein::pdb_ids` feeds `rcsb`,
 //! `Protein::rhea_ids` feeds `rhea`, and `Protein::chebi_ids` feeds `chebi`.
 //!
@@ -510,6 +513,28 @@ pub struct PdbXref {
     pub resolution: Option<f32>,
     /// The chains of the structure this entry covers, and over which residues, e.g. "A/C=2-142".
     pub chains: Option<String>,
+}
+
+impl PdbXref {
+    /// The number of UniProt residues this structure covers, from `chains`. E.g. 141 for
+    /// "A/C=2-142", or 150 for "A=1-100, B=201-250". 0 if `chains` is absent or unparseable.
+    pub fn residue_count(&self) -> u32 {
+        let Some(chains) = &self.chains else {
+            return 0;
+        };
+
+        chains
+            .split(',')
+            .filter_map(|seg| {
+                let (_, range) = seg.split_once('=')?;
+                let (start, end) = range.trim().split_once('-')?;
+                let start: u32 = start.trim().parse().ok()?;
+                let end: u32 = end.trim().parse().ok()?;
+
+                Some(end.saturating_sub(start) + 1)
+            })
+            .sum()
+    }
 }
 
 /// A residue position within a feature. `value` is absent when the position is unknown.
@@ -1309,6 +1334,48 @@ pub fn parse_accession(ident: &str) -> String {
     }
 }
 
+/// Whether `ident` is shaped like a UniProtKB accession, e.g. `P69905`, `A0A023GPI8`,
+/// `uniprot:P69905` or `P69905-2`. Case-insensitive. Useful for deciding if free text, e.g. a
+/// search box query, should be sent to UniProt. This checks format only, not that the entry exists.
+///
+/// [Format](https://www.uniprot.org/help/accession_numbers):
+/// `[OPQ][0-9][A-Z0-9]{3}[0-9]` or `[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2}`
+pub fn is_accession(ident: &str) -> bool {
+    let acc = parse_accession(ident);
+
+    // Isoform suffix, e.g. `-2`.
+    let acc = match acc.split_once('-') {
+        Some((base, iso)) => {
+            if iso.is_empty() || !iso.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            base
+        }
+        None => &acc,
+    };
+
+    let b = acc.as_bytes();
+    let alnum = |c: u8| c.is_ascii_uppercase() || c.is_ascii_digit();
+
+    // `[A-Z][A-Z0-9]{2}[0-9]`
+    let block = |s: &[u8]| {
+        s[0].is_ascii_uppercase() && alnum(s[1]) && alnum(s[2]) && s[3].is_ascii_digit()
+    };
+
+    match b.len() {
+        6 if matches!(b[0], b'O' | b'P' | b'Q') => {
+            b[1].is_ascii_digit() && b[2..5].iter().all(|&c| alnum(c)) && b[5].is_ascii_digit()
+        }
+        6 | 10 => {
+            b[0].is_ascii_uppercase()
+                && !matches!(b[0], b'O' | b'P' | b'Q')
+                && b[1].is_ascii_digit()
+                && b[2..].chunks(4).all(block)
+        }
+        _ => false,
+    }
+}
+
 /// Strip both prefixes from a ChEBI reference: UniProt writes ligand ids as `ChEBI:CHEBI:15379`,
 /// and cofactor ones as `CHEBI:29105`.
 fn parse_chebi_id(id: &str) -> Option<u32> {
@@ -1407,7 +1474,8 @@ pub fn open_overview(accession: &str) {
     }
 }
 
-/// Open the browser to a protein's predicted structure in AlphaFold DB.
+/// Open the browser to a protein's predicted structure in AlphaFold DB. Accepts a UniProt
+/// accession, e.g. `P69905`, or an AlphaFold DB entry ID, e.g. `AF-P69905-F1`.
 pub fn open_alphafold_view(accession: &str) {
     let url = format!("{ALPHAFOLD_URL}/entry/{}", parse_accession(accession));
 
@@ -1537,6 +1605,34 @@ pub fn load_fasta(accession: &str) -> Result<String, ReqError> {
 pub fn load_sequence(accession: &str) -> Result<Vec<AminoAcid>, ReqError> {
     let protein = load_protein_fields(accession, &[Field::Sequence])?;
     Ok(protein.seq_aa())
+}
+
+/// The experimental (PDB) structures of a protein, best first; e.g. `["1jms", "4i2a", ...]` for
+/// `P09838`. Pass these to `rcsb::load_cif` or `pdbe::load_cif` to get the coordinates. Empty if the
+/// protein has no experimental structures; `load_alphafold_cif` is the fallback for those.
+///
+/// This uses PDBe's ranking, which is by coverage of the UniProt sequence, then resolution. If PDBe
+/// can't be reached, or hasn't yet mapped the protein (its SIFTS mapping lags new PDB releases), we
+/// fall back to the PDB cross references of the UniProt entry, ranked the same way.
+pub fn best_pdb_ids(accession: &str) -> Result<Vec<String>, ReqError> {
+    if let Ok(ids) = crate::pdbe::best_pdb_ids(accession)
+        && !ids.is_empty()
+    {
+        return Ok(ids);
+    }
+
+    let mut xrefs = load_protein_fields(accession, &[Field::XrefPdb])?.pdb_xrefs();
+
+    // Most residues covered first; then best (lowest) resolution, with none reported, e.g. NMR, last.
+    xrefs.sort_by(|a, b| {
+        b.residue_count().cmp(&a.residue_count()).then_with(|| {
+            let res_a = a.resolution.unwrap_or(f32::MAX);
+            let res_b = b.resolution.unwrap_or(f32::MAX);
+            res_a.total_cmp(&res_b)
+        })
+    });
+
+    Ok(xrefs.into_iter().map(|x| x.id.to_lowercase()).collect())
 }
 
 /// A practical field set for comparing enzyme candidates for expression and engineering.

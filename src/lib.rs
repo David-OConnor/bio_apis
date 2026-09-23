@@ -3,9 +3,11 @@ use std::{io, time::Duration};
 use ureq::Agent;
 
 pub mod amber_geostd;
+pub mod bmrb;
 pub mod brenda;
 pub mod chebi;
 pub mod drugbank;
+pub mod emdb;
 pub mod lmsd;
 pub mod mcsa;
 pub mod ncbi;

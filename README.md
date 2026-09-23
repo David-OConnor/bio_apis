@@ -20,6 +20,7 @@ data structures for requests and responses, and enums where possible to constrai
 - [LMSD](https://www.lipidmaps.org)
 - [BRENDA](https://www.brenda-enzymes.org/) (public SPARQL knowledge graph)
 - [M-CSA](https://www.ebi.ac.uk/thornton-srv/m-csa/) (enzyme mechanisms and catalytic sites)
+- [EMDB](https://www.ebi.ac.uk/emdb/) and [BMRB](https://bmrb.io/) (opening entry pages only)
 - Mol2, FRCMOD, and Lib data for Amber Geostd organic molecules
 
 

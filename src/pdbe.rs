@@ -8,7 +8,33 @@ use serde::Deserialize;
 use crate::{ReqError, make_agent};
 
 const BASE_URL: &str = "https://www.ebi.ac.uk/pdbe-srv/pdbechem/chemicalCompound/show";
+const ENTRY_URL: &str = "https://www.ebi.ac.uk/pdbe/entry/pdb";
 const MAPPINGS_URL: &str = "https://www.ebi.ac.uk/pdbe/api/mappings";
+const ENTRY_FILES_URL: &str = "https://www.ebi.ac.uk/pdbe/entry-files/download";
+
+// ---- Best structures (UniProt -> PDB) --------------------------------------
+
+/// One experimental structure containing a UniProt entry, from PDBe's "best structures" ranking.
+/// There is one of these per (structure, chain) pair.
+#[derive(Clone, Debug, Deserialize)]
+pub struct BestStructure {
+    /// Lowercase, e.g. `"1jms"`. Pass to `load_cif` here, or `rcsb::load_cif`.
+    pub pdb_id: String,
+    /// The chain of the structure the UniProt sequence maps to, e.g. `"A"`.
+    pub chain_id: String,
+    /// E.g. `"X-ray diffraction"`, `"Electron Microscopy"`, `"Solution NMR"`.
+    pub experimental_method: Option<String>,
+    /// In Å. Absent for methods that don't report one, e.g. NMR.
+    pub resolution: Option<f32>,
+    /// The NCBI taxonomy identifier of the source organism.
+    pub tax_id: Option<u32>,
+    /// First residue this chain covers, in the **UniProt** sequence (1-based).
+    pub unp_start: u32,
+    /// Last residue this chain covers, in the **UniProt** sequence (1-based).
+    pub unp_end: u32,
+    /// Fraction of the UniProt sequence this chain covers (0–1).
+    pub coverage: f32,
+}
 
 // ---- SIFTS / UniProt mapping types ----------------------------------------
 
@@ -102,8 +128,96 @@ pub fn load_uniprot_mappings(pdb_id: &str) -> Result<Vec<SiftsUniprotMapping>, R
         .collect())
 }
 
+/// Our agent doesn't treat error status codes as errors; catch them here, so we don't hand an error
+/// page back to the caller as if it were data.
+fn get(url: &str) -> Result<String, ReqError> {
+    let agent = make_agent();
+    let mut resp = agent.get(url).call()?;
+
+    if resp.status() != 200 {
+        return Err(ReqError::Http);
+    }
+
+    Ok(resp.body_mut().read_to_string()?)
+}
+
+/// PDBe's entry-file endpoints only take the classic 4-character ID; RCSB's extended form, e.g.
+/// `pdb_00001crn`, maps onto it by dropping the prefix and leading zeros.
+fn bare_pdb_id(pdb_id: &str) -> String {
+    let id = pdb_id.trim().to_lowercase();
+
+    match id.strip_prefix("pdb_") {
+        Some(ext) => {
+            let short = ext.trim_start_matches('0');
+            match short.len() == 4 {
+                true => short.to_owned(),
+                false => ext.to_owned(),
+            }
+        }
+        None => id,
+    }
+}
+
+/// Experimental structures containing a UniProt entry, ranked by PDBe: by how much of the UniProt
+/// sequence they cover, then by resolution. The first entry is generally the best representative
+/// structure of the protein. There is one item per (structure, chain) pair, so a PDB ID can appear
+/// more than once.
+///
+/// Returns an empty `Vec` if the protein has no experimental structures.
+///
+/// API: `https://www.ebi.ac.uk/pdbe/api/mappings/best_structures/{accession}`
+pub fn load_best_structures(accession: &str) -> Result<Vec<BestStructure>, ReqError> {
+    let accession = crate::uniprot::parse_accession(accession);
+    let url = format!("{MAPPINGS_URL}/best_structures/{accession}");
+
+    let agent = make_agent();
+    let mut resp = agent.get(&url).call()?;
+
+    // PDBe responds 404, with a message body, for an accession it has no structures of.
+    if resp.status() == 404 {
+        return Ok(Vec::new());
+    }
+    if resp.status() != 200 {
+        return Err(ReqError::Http);
+    }
+
+    // Keyed by the accession.
+    let mut raw: HashMap<String, Vec<BestStructure>> =
+        serde_json::from_str(&resp.body_mut().read_to_string()?)?;
+
+    Ok(raw.drain().next().map(|(_, v)| v).unwrap_or_default())
+}
+
+/// The PDB IDs of `load_best_structures`, deduplicated, in rank order. E.g. `["1jms", "4i2a"]`.
+pub fn best_pdb_ids(accession: &str) -> Result<Vec<String>, ReqError> {
+    let mut result: Vec<String> = Vec::new();
+
+    for s in load_best_structures(accession)? {
+        if !result.contains(&s.pdb_id) {
+            result.push(s.pdb_id);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Download an entry's (atomic coordinates) mmCIF file from PDBe, returning a CIF string. This is
+/// the same structure RCSB serves for the ID. Accepts the 4-character ID, e.g. `1crn`, or the
+/// extended one, e.g. `pdb_00001crn`.
+pub fn load_cif(pdb_id: &str) -> Result<String, ReqError> {
+    get(&format!("{ENTRY_FILES_URL}/{}.cif", bare_pdb_id(pdb_id)))
+}
+
+/// Open the page for a chemical component, e.g. a ligand, given its PDBe ID, e.g. `ATP`.
 pub fn open_overview(id: &str) {
     if let Err(e) = webbrowser::open(&format!("{BASE_URL}/{id}")) {
+        eprintln!("Failed to open the web browser: {:?}", e);
+    }
+}
+
+/// Open the page for a structure, e.g. a protein, given its PDB ID, e.g. `1crn`.
+pub fn open_entry(pdb_id: &str) {
+    if let Err(e) = webbrowser::open(&format!("{ENTRY_URL}/{}", pdb_id.to_lowercase())) {
         eprintln!("Failed to open the web browser: {:?}", e);
     }
 }
@@ -128,13 +242,7 @@ fn sdf_url(ident: &str) -> String {
     )
 }
 
-/// Download an SDF file from PDBe, returning a SDF string.
+/// Download a chemical component's SDF file from PDBe, e.g. for `ATP`, returning a SDF string.
 pub fn load_sdf(ident: &str) -> Result<String, ReqError> {
-    let agent = make_agent();
-
-    Ok(agent
-        .get(sdf_url(ident))
-        .call()?
-        .body_mut()
-        .read_to_string()?)
+    get(&sdf_url(ident.trim()))
 }

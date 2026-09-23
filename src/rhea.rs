@@ -212,6 +212,9 @@ pub struct GoTerm {
 #[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
 pub struct ReactionSide {
     pub participant_names: Vec<String>,
+    /// Full identifiers in participant order, including generic `RHEA-COMP` entries.
+    /// Unlike `participant_chebi_ids`, this stays aligned with names and equation terms.
+    pub participant_identifiers: Vec<String>,
     /// ChEBI identifiers only. A side may also contain a generic `RHEA-COMP` participant, which
     /// is retained in the combined participant fields on [`Reaction`] but has no ChEBI id here.
     pub participant_chebi_ids: Vec<u32>,
@@ -336,6 +339,7 @@ fn reaction_sides(
 
     let side = |range: std::ops::Range<usize>| ReactionSide {
         participant_names: participant_names[range.clone()].to_vec(),
+        participant_identifiers: participant_identifiers[range.clone()].to_vec(),
         participant_chebi_ids: participant_identifiers[range]
             .iter()
             .filter_map(|id| id.strip_prefix("CHEBI:"))
