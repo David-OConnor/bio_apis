@@ -489,30 +489,31 @@ struct PropertyTableResp {
     property_table: PropertyTableInner,
 }
 
-/// Deserializing only
+/// Deserializing only. Only the CID is required: PubChem omits properties it doesn't have for a
+/// compound, and answers a structure query it has no compound for with only `"CID": 0`.
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
 struct CompoundProps {
     #[serde(rename = "CID")]
     cid: u32,
     // These names match PubChem's PUG-REST property tokens.
-    #[serde(rename = "TPSA")]
+    #[serde(rename = "TPSA", default)]
     tpsa: f32,
-    #[serde(rename = "XLogP")]
+    #[serde(rename = "XLogP", default)]
     xlogp: f32,
-    #[serde(rename = "Complexity")]
+    #[serde(rename = "Complexity", default)]
     complexity: f32,
-    #[serde(rename = "Volume3D")]
+    #[serde(rename = "Volume3D", default)]
     volume: f32,
-    #[serde(rename = "SMILES")]
+    #[serde(rename = "SMILES", default)]
     smiles: String,
-    #[serde(rename = "InChI")]
+    #[serde(rename = "InChI", default)]
     inchi: String,
-    #[serde(rename = "InChIKey")]
+    #[serde(rename = "InChIKey", default)]
     inchi_key: String,
-    #[serde(rename = "IUPACName")]
+    #[serde(rename = "IUPACName", default)]
     iupac_name: String,
-    #[serde(rename = "Title")]
+    #[serde(rename = "Title", default)]
     title: String,
 }
 

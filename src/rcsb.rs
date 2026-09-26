@@ -343,6 +343,7 @@ pub struct Cell {
     pub length_a: f32,
     pub length_b: f32,
     pub length_c: f32,
+    #[serde(rename = "Z_PDB", default)]
     pub zpdb: u8,
 }
 
@@ -352,8 +353,11 @@ pub struct Citation {
     pub country: Option<String>,
     pub id: String,
     pub journal_abbrev: String,
+    #[serde(rename = "journal_id_ASTM")]
     pub journal_id_astm: Option<String>,
+    #[serde(rename = "journal_id_CSD")]
     pub journal_id_csd: Option<String>,
+    #[serde(rename = "journal_id_ISSN")]
     pub journal_id_issn: Option<String>,
     #[serde(default, deserialize_with = "deserialize_option_number_from_string")]
     pub journal_volume: Option<u16>,
@@ -363,6 +367,7 @@ pub struct Citation {
     // #[serde(default, deserialize_with = "deserialize_option_number_from_string")]
     // pub page_last: Option<u32>,
     pub page_last: Option<String>,
+    #[serde(rename = "pdbx_database_id_PubMed")]
     pub pdbx_database_id_pub_med: Option<u32>,
     pub rcsb_authors: Option<Vec<String>>,
     pub rcsb_is_primary: String,
@@ -380,6 +385,7 @@ pub struct PdbxDatabaseStatus {
     pub recvd_initial_deposition_date: String, // todo: Chrono time
     pub status_code: String,
     pub status_code_sf: Option<String>,
+    #[serde(rename = "SG_entry")]
     pub sgentry: Option<String>,
 }
 
@@ -414,7 +420,9 @@ pub struct RcsbEntryInfo {
     pub nonpolymer_molecular_weight_minimum: Option<f32>,
     pub polymer_composition: String,
     pub polymer_entity_count: u32,
+    #[serde(rename = "polymer_entity_count_DNA")]
     pub polymer_entity_count_dna: u32,
+    #[serde(rename = "polymer_entity_count_RNA")]
     pub polymer_entity_count_rna: u32,
     pub polymer_entity_count_nucleic_acid: u32,
     pub polymer_entity_count_nucleic_acid_hybrid: u32,
@@ -433,6 +441,7 @@ pub struct RcsbEntryInfo {
 pub struct PdbDataResults {
     #[serde(rename = "struct")]
     pub struct_: PdbStruct,
+    #[serde(rename = "database_2", default)]
     pub database2: Vec<Database2>,
     pub cell: Option<Cell>,
     pub citation: Vec<Citation>,
