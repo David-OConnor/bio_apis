@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_aux::prelude::*;
 
-use crate::{ReqError, make_agent};
+use crate::{ReqError, make_agent, make_agent_with_timeout};
 
 const BASE_URL: &str = "https://www.ebi.ac.uk/chebi";
 
@@ -396,6 +396,35 @@ pub fn get_smiles(ident: u32) -> Result<String, ReqError> {
         .default_structure
         .and_then(|s| s.smiles)
         .ok_or(ReqError::Deserialize)
+}
+
+/// Download ChEBI's default 2D structure as SVG bytes, including outlined atom labels.
+/// `width` and `height` are the requested dimensions in pixels (both must be nonzero).
+/// Returns `None` for a missing structure (HTTP 404 or an empty response).
+/// Other HTTP failures remain errors so callers can offer a retry.
+pub fn load_diagram(id: u32, width: u32, height: u32) -> Result<Option<Vec<u8>>, ReqError> {
+    if width == 0 || height == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Diagram dimensions must be nonzero",
+        )
+        .into());
+    }
+
+    let url = format!("{API_URL}/compound/{id}/structure/?width={width}&height={height}");
+    let mut response = make_agent_with_timeout(15).get(&url).call()?;
+    match response.status().as_u16() {
+        404 => return Ok(None),
+        200 => {}
+        _ => return Err(ReqError::Http),
+    }
+
+    let svg = response
+        .body_mut()
+        .with_config()
+        .limit(2 * 1024 * 1024)
+        .read_to_vec()?;
+    Ok((!svg.iter().all(u8::is_ascii_whitespace)).then_some(svg))
 }
 
 fn mol_url(id: u32) -> String {
