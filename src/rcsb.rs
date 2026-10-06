@@ -741,6 +741,10 @@ pub fn load_cif(ident: &str) -> Result<String, ReqError> {
     let agent = make_agent();
 
     let resp = agent.get(&cif_gz_url(ident)).call()?;
+    if resp.status() != StatusCode::OK {
+        return Err(ReqError::Http);
+    }
+
     decode_gz_str_resp(resp)
 }
 

@@ -327,12 +327,28 @@ pub fn url_api_query(
     // todo: String output for now.
 ) -> Result<String, ReqError> {
     // todo: Op options
-    let idents = identifiers.join(","); // todo: QC the joiner.
+    let idents = identifiers
+        .iter()
+        .map(|ident| encode_path_segment(ident))
+        .collect::<Vec<_>>()
+        .join(",");
     let url = format!("{BASE_PUG_URL}/{domain}/{namespace}/{idents}/{op_spec}/JSON");
 
     let agent = make_agent();
 
     Ok(agent.get(url).call()?.body_mut().read_to_string()?)
+}
+
+/// Percent-encode user or database text before placing it in one segment of a PUG-REST URL path.
+/// This is required for names containing spaces and for structure strings containing reserved
+/// characters such as `+`, `#`, `/`, and `?`.
+fn encode_path_segment(value: &str) -> String {
+    let mut url = url::Url::parse("https://example.invalid/")
+        .expect("the static path-encoding URL must be valid");
+    url.path_segments_mut()
+        .expect("the static URL must support path segments")
+        .push(value);
+    url.path().trim_start_matches('/').to_owned()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -388,6 +404,8 @@ pub fn load_associated_structures(cid: u32) -> Result<Vec<ProteinStructure>, Req
 /// Note: If id is a u32 CID`, convert to str prior to passing here.
 /// `record_type` is `"3d"` or `"2d"`.
 fn sdf_url(id_type: StructureSearchNamespace, id: &str, record_type: &str) -> String {
+    let id = encode_path_segment(id);
+
     format!(
         "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/{id_type}/{id}/SDF?record_type={record_type}",
     )
@@ -445,11 +463,10 @@ pub fn get_smiles(cid: u32) -> Result<String, ReqError> {
 
 /// Todo: You could make this more generic.
 fn properties_url(id_type: StructureSearchNamespace, id: &str) -> String {
-    // e.g. this is sometimes a problem with SMILES queries.
-    let id_santizied = id.replace("#", "%23");
+    let id_sanitized = encode_path_segment(id);
 
     format!(
-        "{BASE_PUG_URL}/compound/{id_type}/{id_santizied}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
+        "{BASE_PUG_URL}/compound/{id_type}/{id_sanitized}/property/TPSA,XLogP,Complexity,Volume3D,SMILES,InChI,\
     InChIKey,IUPACName,Title/JSON"
     )
 }
