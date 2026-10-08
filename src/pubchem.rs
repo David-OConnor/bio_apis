@@ -10,7 +10,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{ReqError, chebi, make_agent};
 
@@ -632,6 +632,8 @@ pub fn titles_for_cids(cids: &[u32]) -> Result<HashMap<u32, String>, ReqError> {
 /// `Section` list.
 #[derive(Debug, Deserialize)]
 struct PugViewSection {
+    #[serde(rename = "TOCHeading", default)]
+    heading: String,
     #[serde(rename = "Section", default)]
     sections: Vec<PugViewSection>,
     #[serde(rename = "Information", default)]
@@ -655,6 +657,10 @@ impl PugViewSection {
 /// Deserializing only.
 #[derive(Debug, Deserialize)]
 struct PugViewInfo {
+    #[serde(rename = "Name", default)]
+    name: String,
+    #[serde(rename = "ReferenceNumber", default)]
+    reference_number: Option<u32>,
     #[serde(rename = "Value")]
     value: PugViewValue,
 }
@@ -671,6 +677,16 @@ struct PugViewValue {
 struct PugViewString {
     #[serde(rename = "String")]
     value: String,
+    #[serde(rename = "Markup", default)]
+    markup: Vec<PugViewMarkup>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PugViewMarkup {
+    #[serde(rename = "URL", default)]
+    url: String,
+    #[serde(rename = "Extra", default)]
+    extra: String,
 }
 
 /// Deserializing only.
@@ -678,6 +694,221 @@ struct PugViewString {
 struct PugViewResp {
     #[serde(rename = "Record")]
     record: PugViewSection,
+}
+
+/// A classification contributor, as attributed by PubChem. The subject can identify a
+/// particular form or mixture; contributors do not necessarily classify the same formulation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct SafetySource {
+    #[serde(alias = "SourceName")]
+    pub name: String,
+    #[serde(alias = "Name", default)]
+    pub subject: String,
+    #[serde(alias = "URL", default)]
+    pub url: String,
+}
+
+/// Reported GHS pictograms, aggregated across PubChem's classification contributors.
+/// False means that a pictogram was not reported, not that the compound is safe. These
+/// describe material hazards, not reaction risk, exposure, or a supplier's formulation.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "encode", derive(bincode::Encode, bincode::Decode))]
+pub struct SafetyData {
+    /// GHS01: explosives, some self-reactives and organic peroxides.
+    pub explosive: bool,
+    /// GHS02: flammables, pyrophorics, self-heating and related fire hazards.
+    pub flammable: bool,
+    /// GHS03: oxidizers.
+    pub oxidizing: bool,
+    /// GHS04: gas under pressure.
+    pub gas_under_pressure: bool,
+    /// GHS05: skin corrosion, serious eye damage, or corrosion of metals.
+    pub corrosive: bool,
+    /// GHS06: acute toxicity (fatal or toxic). Harmful acute toxicity uses GHS07.
+    pub acute_toxicity: bool,
+    /// GHS07: irritation, skin sensitization, harmful acute toxicity, or narcotic effects.
+    pub irritant: bool,
+    /// GHS08: carcinogenicity, mutagenicity, reproductive/organ toxicity, respiratory
+    /// sensitization, or aspiration hazard.
+    pub health_hazard: bool,
+    /// GHS09: aquatic environmental hazards.
+    pub environmental_hazard: bool,
+    /// Strongest reported signal word (Danger takes precedence over Warning).
+    pub signal_word: Option<String>,
+    /// Original H-code statements, including classification and reporting-percentage notes.
+    pub hazard_statements: Vec<String>,
+    pub sources: Vec<SafetySource>,
+    pub pubchem_url: String,
+    /// Date of a checked-in snapshot, if supplied by the caller (YYYY-MM-DD).
+    pub retrieved_on: Option<String>,
+}
+
+impl SafetyData {
+    /// Stable GHS code and readable label for each reported pictogram.
+    pub fn pictograms(&self) -> Vec<(&'static str, &'static str)> {
+        [
+            (self.explosive, "GHS01", "Explosive"),
+            (self.flammable, "GHS02", "Flammable"),
+            (self.oxidizing, "GHS03", "Oxidizing"),
+            (self.gas_under_pressure, "GHS04", "Gas under pressure"),
+            (self.corrosive, "GHS05", "Corrosive / eye damage"),
+            (self.acute_toxicity, "GHS06", "Acute toxicity (fatal/toxic)"),
+            (self.irritant, "GHS07", "Irritant / harmful"),
+            (self.health_hazard, "GHS08", "Health hazard"),
+            (self.environmental_hazard, "GHS09", "Environmental hazard"),
+        ]
+        .into_iter()
+        .filter_map(|(reported, code, label)| reported.then_some((code, label)))
+        .collect()
+    }
+
+    fn add_pictogram(&mut self, markup: &PugViewMarkup) -> bool {
+        let filename = markup.url.rsplit('/').next().unwrap_or_default();
+        let code = filename.split('.').next().unwrap_or_default();
+        let flag = match (code, markup.extra.as_str()) {
+            ("GHS01", _) | (_, "Explosive") => &mut self.explosive,
+            ("GHS02", _) | (_, "Flammable") => &mut self.flammable,
+            ("GHS03", _) | (_, "Oxidizer" | "Oxidizing") => &mut self.oxidizing,
+            ("GHS04", _) | (_, "Compressed Gas" | "Gas Under Pressure") => {
+                &mut self.gas_under_pressure
+            }
+            ("GHS05", _) | (_, "Corrosive") => &mut self.corrosive,
+            ("GHS06", _) | (_, "Acute Toxic" | "Acute Toxicity") => &mut self.acute_toxicity,
+            ("GHS07", _) | (_, "Irritant") => &mut self.irritant,
+            ("GHS08", _) | (_, "Health Hazard") => &mut self.health_hazard,
+            ("GHS09", _) | (_, "Environmental Hazard") => &mut self.environmental_hazard,
+            _ => return false,
+        };
+        *flag = true;
+        true
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PugViewSafetyReference {
+    #[serde(rename = "ReferenceNumber")]
+    number: u32,
+    #[serde(flatten)]
+    source: SafetySource,
+}
+
+#[derive(Debug, Deserialize)]
+struct PugViewSafetyRecord {
+    #[serde(rename = "RecordNumber")]
+    cid: u32,
+    #[serde(flatten)]
+    section: PugViewSection,
+    #[serde(rename = "Reference", default)]
+    references: Vec<PugViewSafetyReference>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PugViewSafetyResp {
+    #[serde(rename = "Record")]
+    record: PugViewSafetyRecord,
+}
+
+fn collect_safety(
+    section: &PugViewSection,
+    in_ghs: bool,
+    data: &mut SafetyData,
+    references: &mut Vec<u32>,
+) -> bool {
+    let in_ghs = in_ghs || section.heading == "GHS Classification";
+    let mut found = false;
+
+    if in_ghs {
+        for info in &section.information {
+            let mut reported = false;
+            for value in &info.value.strings {
+                match info.name.as_str() {
+                    "Pictogram(s)" => {
+                        for markup in &value.markup {
+                            reported |= data.add_pictogram(markup);
+                        }
+                    }
+                    "Signal" => {
+                        let signal = value.value.trim();
+                        if signal == "Danger" || signal == "Warning" {
+                            if signal == "Danger" || data.signal_word.is_none() {
+                                data.signal_word = Some(signal.to_owned());
+                            }
+                            reported = true;
+                        }
+                    }
+                    "GHS Hazard Statements" => {
+                        let statement = value.value.trim();
+                        if !statement.is_empty() {
+                            if !data.hazard_statements.iter().any(|s| s == statement) {
+                                data.hazard_statements.push(statement.to_owned());
+                            }
+                            reported = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if reported {
+                found = true;
+                if let Some(number) = info.reference_number
+                    && !references.contains(&number)
+                {
+                    references.push(number);
+                }
+            }
+        }
+    }
+
+    for child in &section.sections {
+        found |= collect_safety(child, in_ghs, data, references);
+    }
+    found
+}
+
+fn parse_safety_data(cid: u32, body: &str) -> Result<Option<SafetyData>, ReqError> {
+    let parsed: PugViewSafetyResp = serde_json::from_str(body)?;
+    if parsed.record.cid != cid {
+        return Err(ReqError::Deserialize);
+    }
+
+    let mut data = SafetyData {
+        pubchem_url: format!("{BASE_COMPOUND_URL}/{cid}#section=GHS-Classification"),
+        ..SafetyData::default()
+    };
+    let mut references = Vec::new();
+    if !collect_safety(&parsed.record.section, false, &mut data, &mut references) {
+        return Ok(None);
+    }
+
+    data.sources = parsed
+        .record
+        .references
+        .into_iter()
+        .filter(|reference| references.contains(&reference.number))
+        .map(|reference| reference.source)
+        .collect();
+    Ok(Some(data))
+}
+
+/// Retrieve GHS safety annotations through [PUG-View](https://pubchem.ncbi.nlm.nih.gov/pug_view/).
+/// Returns `None` when no usable GHS classification is available, including a 404. Network,
+/// HTTP and malformed-response failures remain errors. Calls must respect PubChem's limit
+/// of five requests per second; cache results when browsing many compounds.
+pub fn safety_data(cid: u32) -> Result<Option<SafetyData>, ReqError> {
+    let agent = make_agent();
+    let url = format!("{BASE_PUG_VIEW_URL}/compound/{cid}/JSON?heading=GHS+Classification");
+    let mut resp = agent.get(url).call()?;
+
+    if resp.status() == 404 {
+        return Ok(None);
+    }
+    if resp.status() != 200 {
+        return Err(ReqError::Http);
+    }
+
+    parse_safety_data(cid, &resp.body_mut().read_to_string()?)
 }
 
 /// Find the ChEBI id of a compound from its PubChem CID, e.g. 2519 (caffeine) -> 27732.
