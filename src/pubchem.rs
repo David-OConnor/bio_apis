@@ -709,7 +709,8 @@ pub struct SafetySource {
     pub url: String,
 }
 
-/// Reported GHS pictograms, aggregated across PubChem's classification contributors.
+/// GHS hazards from the first classification displayed by PubChem.
+/// Pictograms, statements, and source attribution all belong to that classification.
 /// False means that a pictogram was not reported, not that the compound is safe. These
 /// describe material hazards, not reaction risk, exposure, or a supplier's formulation.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -734,7 +735,7 @@ pub struct SafetyData {
     pub health_hazard: bool,
     /// GHS09: aquatic environmental hazards.
     pub environmental_hazard: bool,
-    /// Strongest reported signal word (Danger takes precedence over Warning).
+    /// Signal word reported by the selected classification.
     pub signal_word: Option<String>,
     /// Original H-code statements, including classification and reporting-percentage notes.
     pub hazard_statements: Vec<String>,
@@ -809,62 +810,25 @@ struct PugViewSafetyResp {
     record: PugViewSafetyRecord,
 }
 
-fn collect_safety(
-    section: &PugViewSection,
+fn collect_safety_information<'a>(
+    section: &'a PugViewSection,
     in_ghs: bool,
-    data: &mut SafetyData,
-    references: &mut Vec<u32>,
-) -> bool {
+    information: &mut Vec<&'a PugViewInfo>,
+) {
     let in_ghs = in_ghs || section.heading == "GHS Classification";
-    let mut found = false;
 
     if in_ghs {
-        for info in &section.information {
-            let mut reported = false;
-            for value in &info.value.strings {
-                match info.name.as_str() {
-                    "Pictogram(s)" => {
-                        for markup in &value.markup {
-                            reported |= data.add_pictogram(markup);
-                        }
-                    }
-                    "Signal" => {
-                        let signal = value.value.trim();
-                        if signal == "Danger" || signal == "Warning" {
-                            if signal == "Danger" || data.signal_word.is_none() {
-                                data.signal_word = Some(signal.to_owned());
-                            }
-                            reported = true;
-                        }
-                    }
-                    "GHS Hazard Statements" => {
-                        let statement = value.value.trim();
-                        if !statement.is_empty() {
-                            if !data.hazard_statements.iter().any(|s| s == statement) {
-                                data.hazard_statements.push(statement.to_owned());
-                            }
-                            reported = true;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            if reported {
-                found = true;
-                if let Some(number) = info.reference_number
-                    && !references.contains(&number)
-                {
-                    references.push(number);
-                }
-            }
-        }
+        information.extend(section.information.iter().filter(|info| {
+            matches!(
+                info.name.as_str(),
+                "Pictogram(s)" | "Signal" | "GHS Hazard Statements"
+            )
+        }));
     }
 
     for child in &section.sections {
-        found |= collect_safety(child, in_ghs, data, references);
+        collect_safety_information(child, in_ghs, information);
     }
-    found
 }
 
 fn parse_safety_data(cid: u32, body: &str) -> Result<Option<SafetyData>, ReqError> {
@@ -873,12 +837,54 @@ fn parse_safety_data(cid: u32, body: &str) -> Result<Option<SafetyData>, ReqErro
         return Err(ReqError::Deserialize);
     }
 
+    let mut information = Vec::new();
+    collect_safety_information(&parsed.record.section, false, &mut information);
+    let Some(first) = information.first() else {
+        return Ok(None);
+    };
+
+    // PUG-View orders these entries as on the compound page. Keep the first
+    // classification intact, rather than combining other contributors' hazards.
+    let reference_number = first.reference_number;
     let mut data = SafetyData {
         pubchem_url: format!("{BASE_COMPOUND_URL}/{cid}#section=GHS-Classification"),
         ..SafetyData::default()
     };
-    let mut references = Vec::new();
-    if !collect_safety(&parsed.record.section, false, &mut data, &mut references) {
+    let mut reported = false;
+
+    for info in information
+        .into_iter()
+        .filter(|info| info.reference_number == reference_number)
+    {
+        for value in &info.value.strings {
+            match info.name.as_str() {
+                "Pictogram(s)" => {
+                    for markup in &value.markup {
+                        reported |= data.add_pictogram(markup);
+                    }
+                }
+                "Signal" => {
+                    let signal = value.value.trim();
+                    if signal == "Danger" || signal == "Warning" {
+                        data.signal_word = Some(signal.to_owned());
+                        reported = true;
+                    }
+                }
+                "GHS Hazard Statements" => {
+                    let statement = value.value.trim();
+                    if !statement.is_empty() {
+                        if !data.hazard_statements.iter().any(|s| s == statement) {
+                            data.hazard_statements.push(statement.to_owned());
+                        }
+                        reported = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if !reported {
         return Ok(None);
     }
 
@@ -886,13 +892,14 @@ fn parse_safety_data(cid: u32, body: &str) -> Result<Option<SafetyData>, ReqErro
         .record
         .references
         .into_iter()
-        .filter(|reference| references.contains(&reference.number))
+        .filter(|reference| Some(reference.number) == reference_number)
         .map(|reference| reference.source)
         .collect();
     Ok(Some(data))
 }
 
-/// Retrieve GHS safety annotations through [PUG-View](https://pubchem.ncbi.nlm.nih.gov/pug_view/).
+/// Retrieve the first GHS classification through [PUG-View](https://pubchem.ncbi.nlm.nih.gov/pug_view/),
+/// matching the classification initially displayed on the PubChem compound page.
 /// Returns `None` when no usable GHS classification is available, including a 404. Network,
 /// HTTP and malformed-response failures remain errors. Calls must respect PubChem's limit
 /// of five requests per second; cache results when browsing many compounds.
