@@ -1,9 +1,9 @@
 [package]
 name = "bio_apis"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 authors = ["David O'Connor <the_alchemist@fastmail.com>"]
-description = "DNA and RNA sequence types and functions"
+description = "Interact with biology and chemistry databases and APIs"
 keywords = ["molecule", "biology", "bioinformatics", "cheminformatics"]
 categories = [
     "science::bioinformatics",
@@ -19,18 +19,19 @@ exclude = [".gitignore"]
 
 
 [dependencies]
-ureq = "3.4.0"
+ureq = "3.5"
 url = "2.5.8"
-webbrowser = "1.2.4"
+webbrowser = "1.2"
 na_seq = "0.3.15"
-serde = { version = "1.0.229", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"
 serde-aux = "4.7.0"  # Deser num from string.
 
 # For loading a semi-random new protein.
-rand = "0.10.2"
+rand = "0.10"
 # We use this for decompressing downloaded CIF files.
-flate2 = "1.1.9"
+flate2 = "1.1"
+zip = { version = "9.5", default-features = false, features = ["deflate"] }
 # For serializing. Useful if storing these to file by the application.
 bincode = { version = "2.0.1", optional = true }
 

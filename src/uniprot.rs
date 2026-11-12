@@ -1358,9 +1358,8 @@ pub fn is_accession(ident: &str) -> bool {
     let alnum = |c: u8| c.is_ascii_uppercase() || c.is_ascii_digit();
 
     // `[A-Z][A-Z0-9]{2}[0-9]`
-    let block = |s: &[u8]| {
-        s[0].is_ascii_uppercase() && alnum(s[1]) && alnum(s[2]) && s[3].is_ascii_digit()
-    };
+    let block =
+        |s: &[u8]| s[0].is_ascii_uppercase() && alnum(s[1]) && alnum(s[2]) && s[3].is_ascii_digit();
 
     match b.len() {
         6 if matches!(b[0], b'O' | b'P' | b'Q') => {

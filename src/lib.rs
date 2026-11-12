@@ -8,6 +8,7 @@ pub mod brenda;
 pub mod chebi;
 pub mod drugbank;
 pub mod emdb;
+pub mod ligpargen;
 pub mod lmsd;
 pub mod mcsa;
 pub mod ncbi;
