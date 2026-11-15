@@ -3,6 +3,7 @@ use std::{io, time::Duration};
 use ureq::Agent;
 
 pub mod amber_geostd;
+pub mod athanortools;
 pub mod bmrb;
 pub mod brenda;
 pub mod chebi;
