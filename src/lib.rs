@@ -12,6 +12,7 @@ pub mod emdb;
 pub mod ligpargen;
 pub mod lmsd;
 pub mod mcsa;
+pub mod mdposit;
 pub mod ncbi;
 pub mod pdbe;
 pub mod pubchem;

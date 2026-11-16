@@ -12,6 +12,7 @@ data structures for requests and responses, and enums where possible to constrai
 - [RCSB](https://data.rcsb.org/) (Protein data bank), including ligands from its Chemical Component Dictionary (CCD)
 - [PubChem](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
 - [PDBe](https://www.ebi.ac.uk/pdbe/)
+- [MDposit](https://mdposit.mddbr.eu/api/rest/docs/) (molecular dynamics projects, trajectory exports, and deposited files)
 - [DrugBank](https://docs.drugbank.com/v1/)
 - [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi)
 - [Rhea](https://www.rhea-db.org/)
